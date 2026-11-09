@@ -778,6 +778,32 @@ body,
 }
 
 .step-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line-2); }
+
+/* 候选台账：每份候选的结局都留档，被拦下的不删除 */
+.cand-list { display: flex; flex-direction: column; border-top: 1px solid var(--line-2); }
+.cand {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.cand-no { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted-2); padding-top: 3px; }
+.cand-main b { display: block; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.cand-main p { font-size: 12px; line-height: 1.7; color: var(--muted); margin-top: 3px; }
+.cand-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.cand.is-pass .cand-tag { color: var(--green); }
+.cand.is-block .cand-tag { color: var(--red); }
+.cand.is-block .cand-main b { color: var(--red-deep); }
+.cand.is-block .cand-main p { color: var(--muted); }
 .step {
   display: grid;
   grid-template-columns: 30px 1fr;

@@ -859,6 +859,30 @@
         </div>`).join("")
       : `<p class="muted-line">没有可展示的结构化步骤。</p>`;
 
+    const ledger = (r.candidates || []).length > 1
+      ? `<section class="r-sec">
+          <h3>候选台账</h3>
+          <div class="cand-list">${(r.candidates || []).map((x, i) => {
+            const blockers = x.blockers || [];
+            const ok = blockers.length === 0;
+            const sel = r.selectedIndex === i;
+            const fb = x.candidate && x.candidate.finalAnswers && x.candidate.finalAnswers[0];
+            const line = ok
+              ? ((fb && fb.value) || "通过结构、漏审、红线与证据量检查。")
+              : blockers.slice(0, 2).join(" ");
+            return `<div class="cand ${ok ? "is-pass" : "is-block"}">
+              <span class="cand-no">0${i + 1}</span>
+              <div class="cand-main">
+                <b>候选 ${i + 1} · ${ok ? (sel ? "通过验收，已采用" : "通过验收，未采用") : "被门槛拦下"}</b>
+                <p>${escapeHtml(String(line).slice(0, 160))}</p>
+              </div>
+              <span class="cand-tag">${ok ? "PASS" : "BLOCKED"}</span>
+            </div>`;
+          }).join("")}</div>
+          <p class="tiny">候选之间互不可见。被拦下的候选不会被删除：拒绝理由留在这里，也留在 Markdown 里。</p>
+        </section>`
+      : "";
+
     const warnings = (r.warnings || []).length
       ? r.warnings.map((w) => {
         const isRed = /红线|同源|未通过|证据不足|未核对/.test(w);
@@ -924,6 +948,7 @@
             <h3>最终答案</h3>
             <div class="r-answer">${answers}</div>
           </section>
+          ${ledger}
           <section class="r-sec">
             <h3>可审计的步骤</h3>
             <div class="step-list">${steps}</div>
