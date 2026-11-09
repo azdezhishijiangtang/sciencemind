@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ScienceMind · 把解题关进程序化的笼子</title>
+<meta name="description" content="ScienceMind 是一个浏览器内的竞赛解题工作台：本地 OCR、人工核对、三档模型独立求解与仲裁、程序化验收与证据量。BYOK，零后端。">
+<meta name="theme-color" content="#f5f2ea">
+<link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+<script>
+  /* 主题在首帧前定好，避免闪白 */
+  (function () {
+    try {
+      var saved = localStorage.getItem("sm.theme");
+      var night = saved ? saved === "night" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", night ? "night" : "day");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "day"); }
+  })();
+</script>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#" data-view-link="solve" aria-label="ScienceMind 首页">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="1" y="1" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <path class="brand-accent" d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="12" cy="12" r="5.6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <circle class="brand-accent" cx="12" cy="12" r="1.4" fill="currentColor"/>
+      </svg>
+      <span class="brand-word">Science<span>Mind</span></span>
+      <span class="brand-ver">v11.0</span>
+    </a>
+
+    <nav class="tabs" aria-label="主导航">
+      <button class="tab is-active" data-view="solve">解题</button>
+      <button class="tab" data-view="library">资料库</button>
+      <button class="tab" data-view="archive">档案</button>
+      <button class="tab" data-view="method">方法</button>
+    </nav>
+
+    <div class="topbar-actions">
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="切换到月光模式" aria-pressed="false" title="日光 / 月光">
+        <svg class="ico ico-sun" viewBox="0 0 20 20" aria-hidden="true">
+          <circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M10 1.6v2M10 16.4v2M1.6 10h2M16.4 10h2M3.9 3.9l1.4 1.4M14.7 14.7l1.4 1.4M16.1 3.9l-1.4 1.4M5.3 14.7l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <svg class="ico ico-moon" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M16.2 12.4A6.8 6.8 0 0 1 7.6 3.8a6.9 6.9 0 1 0 8.6 8.6Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="model-btn" id="modelBtn" aria-haspopup="dialog" aria-controls="settingsDrawer">
+        <i class="dot"></i><span id="modelBtnText">未配置模型</span>
+      </button>
+      <a class="gh-link" href="https://github.com/azdezhishijiangtang/sciencemind" target="_blank" rel="noopener" aria-label="GitHub 仓库">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ================= 解题 ================= -->
+  <section class="view is-active" id="view-solve" aria-label="解题工作台">
+    <div class="workspace">
+
+      <aside class="compose">
+        <div class="compose-head">
+          <div class="eyebrow"><span>NEW PROBLEM</span><span class="eyebrow-rule"></span></div>
+          <h1>把题交进来，<br>然后接受审查。</h1>
+          <p class="compose-sub">拍题、核对题面、由三个互相独立的模型求解与审核，最后交给程序化门槛逐条验收。没有通过的候选，不会被包装成答案。</p>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <label for="question">题目</label>
+            <span class="field-meta" id="qCount">0 字</span>
+          </div>
+          <textarea id="question" spellcheck="false" placeholder="粘贴题目原文，支持 LaTeX：&#10;&#10;设 a, b, c &gt; 0，且 a+b+c=3，证明：…&#10;&#10;没有 Key？点下方「载入示例」，可直接跑一次本地判题演示。"></textarea>
+          <div class="field-tools">
+            <button class="tool" id="imageBtn" type="button">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2z" fill="none" stroke="currentColor"/><circle cx="5.6" cy="6.6" r="1.1" fill="currentColor"/><path d="M2.5 11l3.4-3 2.5 2.2 2.3-2.6 3 3.4" fill="none" stroke="currentColor"/></svg>
+              图片题
+            </button>
+            <button class="tool" id="demoBtn" type="button">载入示例</button>
+            <button class="tool tool--quiet" id="clearBtn" type="button">清空</button>
+            <span class="tool-spacer"></span>
+            <button class="tool tool--quiet" id="pasteBtn" type="button">读剪贴板</button>
+          </div>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+
+        <div class="image-panel" id="imagePanel" hidden>
+          <div class="image-head">
+            <span class="mono">IMAGE / 本地处理</span>
+            <button class="icon-btn" id="imageClose" type="button" aria-label="移除图片">×</button>
+          </div>
+          <div class="image-body">
+            <div class="thumb"><img id="imagePreview" alt="待识别题目图片"></div>
+            <div class="image-info">
+              <p class="image-note">图片不上传。识别在浏览器内完成，识别结果只是一份待核对的草稿。</p>
+              <div class="image-actions">
+                <button class="btn btn--sm" id="ocrBtn" type="button">开始本地识别</button>
+                <span class="ocr-status" id="ocrStatus">未识别</span>
+              </div>
+              <div class="ocr-progress" id="ocrProgress" hidden><i></i></div>
+            </div>
+          </div>
+          <label class="checkline">
+            <input type="checkbox" id="verifiedCheck">
+            <span class="box"></span>
+            <span>我已逐字核对题面文字（OCR 会把 x² 读成 2x，抄错题比做错题更危险）</span>
+          </label>
+          <div class="subfield">
+            <label for="uncertainties">图中存疑 / 未提供的信息</label>
+            <input id="uncertainties" type="text" placeholder="例如：图中角度未标注、根号范围看不清（逗号分隔）">
+          </div>
+          <p class="gate-note" id="gateNote">未勾选核对时，本题禁止输出 <code>verified</code>，只能 <code>needs_review</code>。这条由程序判定，模型无权改写。</p>
+        </div>
+
+        <div class="controls">
+          <div class="control">
+            <div class="control-label"><span>候选数</span><em id="candHint">独立求解</em></div>
+            <div class="seg" id="candSeg" role="group" aria-label="候选数">
+              <button data-value="1" type="button">1</button>
+              <button data-value="2" class="is-on" type="button">2</button>
+              <button data-value="3" type="button">3</button>
+            </div>
+          </div>
+          <div class="control">
+            <div class="control-label"><span>推理档</span><em id="modeHint">32k 预算</em></div>
+            <div class="seg seg--4" id="modeSeg" role="group" aria-label="推理档">
+              <button data-value="off" type="button">关</button>
+              <button data-value="low" type="button">低</button>
+              <button data-value="medium" type="button">中</button>
+              <button data-value="high" class="is-on" type="button">高</button>
+            </div>
+          </div>
+          <div class="switch-row">
+            <label class="switch">
+              <input type="checkbox" id="useLibrary" checked>
+              <span class="track"></span><span class="switch-text">注入资料库片段</span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="strictEvidence">
+              <span class="track"></span><span class="switch-text">严格证据</span>
+            </label>
+          </div>
+        </div>
+
+        <button class="run-btn" id="runBtn" type="button">
+          <span class="run-label">开始判题</span>
+          <span class="run-kbd">⌘ ↵</span>
+        </button>
+        <p class="compose-note">Key 只存在内存，刷新即失。运行会产生真实 API 请求与费用，请使用限额子密钥。</p>
+      </aside>
+
+      <section class="stage" aria-live="polite">
+        <div class="stage-head">
+          <div class="stage-title">
+            <span class="mono">WORKBENCH</span>
+            <span class="stage-status" id="stageStatus"><i></i>待命</span>
+          </div>
+          <div class="stage-meta" id="stageMeta">无请求发出</div>
+        </div>
+
+        <div class="stage-scroll" id="stageScroll">
+
+          <div class="stage-empty" id="stageEmpty">
+            <div class="empty-quote">
+              <span class="qmark">“</span>
+              <p>可靠性不来自让模型更仔细，<br>而来自把不可信的东西<br>关进程序化的笼子。</p>
+            </div>
+            <div class="empty-grid">
+              <div class="empty-card">
+                <span class="mono">01 / 抄题</span>
+                <b>先核对，再作答</b>
+                <p>OCR 把 x²−4x+3 读成 2x−4x+3，验证器验的还是推导，不是题面。</p>
+              </div>
+              <div class="empty-card">
+                <span class="mono">02 / 求解</span>
+                <b>三档互相独立</b>
+                <p>solver 求解，verifier 逐目标逐步骤重算，adjudicator 只认正确性，不认票数。</p>
+              </div>
+              <div class="empty-card">
+                <span class="mono">03 / 验收</span>
+                <b>门槛由代码执行</b>
+                <p>结构、漏审、红线、图片核对、证据量。模型写 pass 不算通过。</p>
+              </div>
+            </div>
+            <div class="empty-foot">
+              <span class="mono">NO KEY REQUIRED FOR DEMO</span>
+              <p>没有 API Key 也能点「载入示例 → 开始判题」，跑一次完整的本地演示，看清楚它是怎么拒绝一个候选的。</p>
+            </div>
+          </div>
+
+          <div class="run-view" id="stageRun" hidden>
+            <div class="run-head">
+              <div>
+                <span class="mono" id="runId">RUN</span>
+                <h2 id="runTitle">正在审题</h2>
+              </div>
+              <div class="run-clock"><span id="runClock">0.0s</span><button class="icon-btn" id="cancelBtn" type="button" aria-label="中断">中断</button></div>
+            </div>
+            <ol class="trace" id="trace"></ol>
+            <div class="run-budget" id="runBudget">模型调用 0 / 0</div>
+          </div>
+
+          <div class="result" id="stageResult" hidden></div>
+
+          <div class="stage-foot">
+            <span>ScienceMind v11.0 · 程序化判题</span>
+            <span>无后端 · 无账号 · 无云同步</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ================= 资料库 ================= -->
+  <section class="view" id="view-library" aria-label="资料库" hidden>
+    <div class="page">
+      <header class="page-head">
+        <div class="eyebrow"><span>LIBRARY</span><span class="eyebrow-rule"></span></div>
+        <h1>资料进得来，<br>找得到，带得走。</h1>
+        <p class="page-sub">PDF / 讲义留在本机 IndexedDB，逐页解析、按页引用。解题时只把命中的片段注入提示词，并标明出处。</p>
+      </header>
+
+      <div class="library-grid">
+        <section class="lib-col">
+          <div class="panel">
+            <div class="panel-head"><h2>导入资料</h2><span class="mono">本地 · 不上传</span></div>
+            <label class="dropzone" id="dropzone" for="docInput">
+              <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 6v20M12 14l8-8 8 8M7 30v4h26v-4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+              <b>选择 PDF、TXT 或 Markdown</b>
+              <span>PDF 逐页提取文字层；扫描页会标注「未提取」，不假装识别成功。</span>
+              <em>最多 500 页 · 单文件建议 &lt; 40 MB</em>
+            </label>
+            <input type="file" id="docInput" accept=".pdf,.txt,.md,text/plain,application/pdf" hidden>
+            <div class="import-status" id="importStatus" hidden></div>
+            <div class="lib-stats">
+              <div><b id="libDocs">0</b><span>份资料</span></div>
+              <div><b id="libPages">0</b><span>页文本</span></div>
+              <div><b id="libChunks">0</b><span>可检索片段</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>本地检索</h2><span class="mono">TF-IDF</span></div>
+            <div class="searchbar">
+              <input id="libQuery" type="search" placeholder="搜定理、符号或页码出处…">
+              <button class="btn btn--sm" id="libSearchBtn" type="button">检索</button>
+            </div>
+            <div class="search-results" id="libResults">
+              <p class="muted-line">还没有检索。索引在浏览器内构建，不发送查询。</p>
+            </div>
+          </div>
+        </section>
+
+        <aside class="lib-col">
+          <div class="panel panel--tall">
+            <div class="panel-head"><h2>我的资料</h2><span class="mono" id="libSort">最近导入</span></div>
+            <div class="doc-list" id="docList">
+              <div class="empty-mini">
+                <span class="mono">EMPTY</span>
+                <p>这里还没有资料。导入一本讲义，解题时勾选「注入资料库片段」即可引用。</p>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>导出与迁移</h2><span class="mono">lite / full</span></div>
+            <p class="panel-copy"><b>lite</b> 丢的是「原件」，不是「内容」：文本、页码、缩略图、错题本都在，只是 PDF 原文翻不开、题目原图放不大。<b>full</b> 再加原文与题图。</p>
+            <div class="export-actions">
+              <button class="btn btn--sm" id="exportLite" type="button">导出 lite</button>
+              <button class="btn btn--sm" id="exportFull" type="button">导出 full</button>
+            </div>
+            <p class="tiny">示例体积（300 页 + 10 题，参考基线）：lite ≈ 1.11 MB / full ≈ 71.11 MB。压缩对纯文本有效，对 PDF 与图片几乎无效。</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 档案 ================= -->
+  <section class="view" id="view-archive" aria-label="档案" hidden>
+    <div class="page">
+      <header class="page-head">
+        <div class="eyebrow"><span>ARCHIVE</span><span class="eyebrow-rule"></span></div>
+        <h1>每一道题，<br>都留下判定记录。</h1>
+        <p class="page-sub">结果连同证据量、降级原因一起存在本机。没有「手动标记已解决」的入口，也没有一键忽略检查。</p>
+      </header>
+      <div class="archive-toolbar">
+        <div class="archive-count"><b id="archCount">0</b> 条记录</div>
+        <button class="tool tool--quiet" id="clearArchive" type="button">清空档案</button>
+      </div>
+      <div class="archive-list" id="archiveList"></div>
+    </div>
+  </section>
+
+  <!-- ================= 方法 ================= -->
+  <section class="view" id="view-method" aria-label="方法与边界" hidden>
+    <div class="page">
+      <header class="page-head">
+        <div class="eyebrow"><span>METHOD / v11.0</span><span class="eyebrow-rule"></span></div>
+        <h1>它怎么判，<br>以及它不做什么。</h1>
+        <p class="page-sub">ScienceMind 不承诺绝对正确。它承诺的是：每个结论都能追到证据，每个失败都能看到原因，模型自报的 pass 不算数。</p>
+      </header>
+
+      <section class="method-sec">
+        <div class="method-no">01</div>
+        <div class="method-body">
+          <h2>十二道关</h2>
+          <p>从原图到最终答案，中间不是一次模型调用，而是一条可逐段检查的链路。每一格都写明由谁判定。</p>
+          <ol class="flow">
+            <li><b>入口分流</b><span>拍题 / 资料，共用一套不确定性语义</span><em>已实现</em></li>
+            <li><b>本地 OCR</b><span>1600px 长边渲染，逐页判定文字层 / 扫描页</span><em>已实现</em></li>
+            <li><b>人工核对</b><span>题面文字逐字确认，存疑项显式登记</span><em>原型</em></li>
+            <li><b>题目契约</b><span>目标、符号、假设、图片边界成为结构化字段</span><em>已实现</em></li>
+            <li><b>请求层</b><span>URL 归一化、七家参数映射、400 整组去参</span><em>已实现</em></li>
+            <li><b>N 路求解</b><span>solver 独立作答，候选之间互不可见</span><em>已实现</em></li>
+            <li><b>独立审核</b><span>verifier 逐目标、逐步骤重算，不看自我评价</span><em>已实现</em></li>
+            <li><b>程序化验收</b><span>结构 / 漏审 / 工具 fail / 红线四类门槛</span><em>已实现</em></li>
+            <li><b>第三方仲裁</b><span>adjudicator 只认正确性，不盲从多数</span><em>已实现</em></li>
+            <li><b>证据量</b><span>覆盖率、独立性、交叉一致 → sufficient</span><em>已实现</em></li>
+            <li><b>确定性渲染</b><span>Markdown 由代码组装，输出层不再改写证明</span><em>已实现</em></li>
+            <li><b>结果页</b><span>证据、降级原因、八条「不会发生」</span><em>已实现</em></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="method-sec">
+        <div class="method-no">02</div>
+        <div class="method-body">
+          <h2>三档模型，三种立场</h2>
+          <div class="tier-grid">
+            <article><span class="mono">SOLVER</span><h3>强推理</h3><p>负责把题做出来，允许多路独立候选。默认采用最稳健、便于完整核验的路线，而不是最炫的路线。</p></article>
+            <article><span class="mono">VERIFIER</span><h3>独立第二模型</h3><p>先自行重算，再逐目标、逐步骤审核。主动找反例、遗漏情形、循环论证；候选自己的 checks 不算证据。</p></article>
+            <article><span class="mono">ADJUDICATOR</span><h3>第三方仲裁</h3><p>逐目标规范化比较答案，按数学 / 物理正确性判断。数值相同不代表证明有效，两份一致也不免于核对。</p></article>
+          </div>
+          <p class="method-note">开启「强制不同模型族」后，三档 family 两两不同，同源直接抛错：「禁止同源模型自我复核或自我仲裁」。默认不强制，但会给出「审核独立性有限」的警告——不静默改变既有语义。</p>
+        </div>
+      </section>
+
+      <section class="method-sec">
+        <div class="method-no">03</div>
+        <div class="method-body">
+          <h2>红线不是判断对错，是拒绝措辞</h2>
+          <p>扫描解答者的叙述字段：<code>understanding</code> / <code>approach</code> / <code>steps.claim</code> / <code>steps.justification</code>。命中即降级并写明位置，不删除答案。否定语境有 14 字豁免窗口，避免「此处不得写显然成立」被自己误伤。</p>
+          <div class="redline-table" id="methodRedlines"></div>
+        </div>
+      </section>
+
+      <section class="method-sec">
+        <div class="method-no">04</div>
+        <div class="method-body">
+          <h2>证据量，不是置信度</h2>
+          <p>结果页不出现 0–1 的「正确率」。展示的是可核验的覆盖率与独立性：核验了几个目标、几个步骤、审核模型是否独立、是否形成交叉一致。</p>
+          <pre class="code-block"><code>{
+  "verifiedTargets": 1, "totalTargets": 1,
+  "verifiedSteps": 3, "totalSteps": 3,
+  "independentToolPasses": 0, "independentToolChecks": 0,
+  "independentVerifier": true,
+  "independentAdjudicator": true,
+  "crossModelAgree": true,
+  "sufficient": true,
+  "confidence": "high",
+  "insufficientReasons": []
+}</code></pre>
+          <p class="method-note"><code>confidence</code> 是程序化证据强度（high / medium / low），不是模型自报的概率。样本或独立性不足时，结果页明确写「证据不足，不能判定为 verified」，并逐条给出原因。</p>
+        </div>
+      </section>
+
+      <section class="method-sec">
+        <div class="method-no">05</div>
+        <div class="method-body">
+          <h2>这里不会发生什么</h2>
+          <ul class="non-events" id="methodNonEvents"></ul>
+          <p class="method-note">这八条随每份结果输出。它们不是免责声明，而是产品的行为约束。</p>
+        </div>
+      </section>
+
+      <section class="method-sec">
+        <div class="method-no">06</div>
+        <div class="method-body">
+          <h2>边界</h2>
+          <div class="boundary-grid">
+            <div><h3>不承诺绝对正确</h3><p><code>verified</code> 只表示通过本流程的程序化检查，不是数学证明的终审。审核模型与仲裁模型只增加独立性，不构成正确性保证。</p></div>
+            <div><h3>真实端点未验</h3><p>参数映射只在 mock 上验证过。遇到 CORS、额度或参数不兼容，页面会给出可操作的中文错误，不假装成功。</p></div>
+            <div><h3>无人工金标集</h3><p>没有人工标注的题目集与对照实验，因此本产品不提供任何「正确率提升 X%」的数字。</p></div>
+            <div><h3>密钥的极限</h3><p>纯静态 BYOK 无法抵御解锁期间的 XSS。密钥默认只在内存，降低的是持久化暴露面，不是硬件级隔离。</p></div>
+          </div>
+          <p class="method-note">本页是 v11.0 方案的浏览器实现：判题链路、红线、证据量、图片门槛与状态语义与文档一致；OCR、资料检索与三档调用为前端近似实现，不冒充生产包的实测结论。</p>
+        </div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<nav class="mobile-tabs" aria-label="移动导航">
+  <button class="is-active" data-view="solve"><svg viewBox="0 0 20 20"><path d="M4 3h12v14H4zM7 7h6M7 10h6M7 13h4" fill="none" stroke="currentColor"/></svg><span>解题</span></button>
+  <button data-view="library"><svg viewBox="0 0 20 20"><path d="M3 4h6v13H3zM11 4h6v13h-6z" fill="none" stroke="currentColor"/></svg><span>资料</span></button>
+  <button data-view="archive"><svg viewBox="0 0 20 20"><path d="M3 4h14v4H3zM4 8h12v9H4zM8 12h4" fill="none" stroke="currentColor"/></svg><span>档案</span></button>
+  <button data-view="method"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor"/><path d="M10 6v5l3 2" fill="none" stroke="currentColor"/></svg><span>方法</span></button>
+</nav>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="drawer" id="settingsDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+  <div class="drawer-head">
+    <div>
+      <span class="mono">CONFIG</span>
+      <h2 id="drawerTitle">模型与密钥</h2>
+    </div>
+    <button class="icon-btn" id="drawerClose" type="button" aria-label="关闭">×</button>
+  </div>
+  <div class="drawer-scroll">
+    <div class="vault-banner">
+      <svg viewBox="0 0 18 18" aria-hidden="true"><rect x="3" y="8" width="12" height="8" fill="none" stroke="currentColor"/><path d="M6 8V5.5a3 3 0 0 1 6 0V8" fill="none" stroke="currentColor"/></svg>
+      <div><b>密钥只存在内存句柄里</b><p>刷新即失，不写 localStorage / sessionStorage / 备份包。建议使用额度受限、可随时撤销的专用子密钥。</p></div>
+    </div>
+
+    <div id="slotList"></div>
+
+    <div class="drawer-section">
+      <h3>判题纪律</h3>
+      <label class="switch switch--wide">
+        <input type="checkbox" id="distinctFamilies">
+        <span class="track"></span>
+        <span class="switch-text"><b>强制三档来自不同模型族</b><em>同源直接抛错，禁止自我复核 / 自我仲裁</em></span>
+      </label>
+      <label class="switch switch--wide">
+        <input type="checkbox" id="drawerStrict">
+        <span class="track"></span>
+        <span class="switch-text"><b>严格证据</b><em>证据不足时禁止输出 verified</em></span>
+      </label>
+      <label class="switch switch--wide">
+        <input type="checkbox" id="preservePartial" checked>
+        <span class="track"></span>
+        <span class="switch-text"><b>中断保留结构化步骤</b><em>标 partial，明确写「未完成任何核验」</em></span>
+      </label>
+    </div>
+
+    <div class="drawer-section">
+      <h3>安全边界</h3>
+      <p class="tiny">纯静态 BYOK 无法做到密码学意义上的绝对不泄露：XSS 若在密钥解锁期间执行，仍可 hook 请求读取到 Key。「只存内存」降低的是持久化暴露面，不是硬件级隔离。根治方案是服务端代理 + HttpOnly 会话，那不属于纯前端直连模式。</p>
+      <ul class="mini-list">
+        <li>非 HTTPS 端点一律拒绝，仅 localhost 放行。</li>
+        <li>请求使用 <code>credentials: omit</code> / <code>referrerPolicy: no-referrer</code> / <code>cache: no-store</code>。</li>
+        <li>错误信息统一经 <code>redact()</code> 脱敏，不显示 Bearer 头与请求体。</li>
+        <li>空闲 15 分钟、页面隐藏 3 分钟、<code>pagehide</code> 触发自动锁定。</li>
+      </ul>
+    </div>
+
+    <div class="drawer-section drawer-section--last">
+      <h3>这家能不能直连？</h3>
+      <p class="tiny">浏览器直连要求服务商显式允许 CORS。返回 <code>Failed to fetch</code> 时，通常是服务商不允许浏览器跨域，而不是 Key 错误。此时只能改用允许 CORS 的兼容端点。</p>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <span class="mono" id="drawerState">未配置</span>
+    <button class="btn btn--solid btn--sm" id="drawerDone" type="button">完成</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="modal" hidden>
+  <div class="modal-scrim" data-close></div>
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <div class="modal-head"><span class="mono" id="modalKicker">DETAIL</span><button class="icon-btn" data-close aria-label="关闭">×</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/solver.js"></script>
+<script src="assets/js/ui.js"></script>
+</body>
+</html>
