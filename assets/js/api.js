@@ -182,6 +182,131 @@
     }
   }
 
+  /**
+   * 流式对话（答疑台用）。SSE 逐段回传正文与 reasoning_content。
+   * opts: { mode, maxTokens, temperature, signal, onDelta, onReasoning, onMeta }
+   * 400 且疑似推理参数不兼容时，整组去参重试一次。
+   */
+  async function streamChat(slot, messages, opts) {
+    opts = opts || {};
+    const preset = presetOf(slot.presetId);
+    const base = normalizeBaseUrl(slot.baseUrl || preset.baseUrl);
+    if (!base) throw new Error("缺少端点地址。");
+    if (!slot.model) throw new Error("缺少模型名。");
+    if (!slot.apiKey) throw new Error("缺少 API Key。");
+    assertSecureEndpoint(base);
+
+    const mode = opts.mode || "high";
+    const plan = SM.MODE_PLAN[mode] || SM.MODE_PLAN.high;
+    const signal = opts.signal;
+
+    function buildBody(withParams) {
+      const body = {
+        model: slot.model,
+        messages: messages,
+        stream: true,
+        stream_options: { include_usage: true },
+        max_tokens: opts.maxTokens || plan.maxTokens,
+      };
+      if (preset.supportsTemperature) {
+        body.temperature = opts.temperature === undefined ? plan.temperature : opts.temperature;
+      }
+      if (withParams) Object.assign(body, buildProviderParams(preset, mode));
+      return body;
+    }
+
+    async function post(body) {
+      return fetch(base + "/chat/completions", Object.assign({}, SECURE_OPTS, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + slot.apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: signal,
+      }));
+    }
+
+    let res;
+    try {
+      res = await post(buildBody(true));
+      if (!res.ok && res.status === 400) {
+        const raw = await readError(res);
+        if (looksLikeReasoningParameterError(400, raw)) {
+          res = await post(buildBody(false));
+        } else {
+          throw new Error(translateError(400, raw));
+        }
+      }
+      if (!res.ok) throw new Error(translateError(res.status, await readError(res)));
+    } catch (err) {
+      if (signal && signal.aborted) throw new Error("__ABORTED__");
+      if (err instanceof TypeError && /fetch/i.test(err.message)) {
+        throw new Error("网络或 CORS 错误：服务商可能不允许浏览器跨域直连。请确认该服务商支持 CORS，或改用允许直连的兼容端点。");
+      }
+      throw new Error(redact(err.message || String(err)));
+    }
+
+    function handlePayload(payload) {
+      let json;
+      try { json = JSON.parse(payload); } catch (_) { return false; }
+      if (json.error && json.error.message) throw new Error(redact(json.error.message));
+      if (opts.onMeta && (json.model || json.usage)) {
+        opts.onMeta({
+          model: json.model,
+          usage: json.usage ? {
+            prompt: json.usage.prompt_tokens || 0,
+            completion: json.usage.completion_tokens || 0,
+            total: json.usage.total_tokens || 0,
+          } : null,
+        });
+      }
+      const choice = json.choices && json.choices[0];
+      if (!choice) return false;
+      const delta = choice.delta || choice.message || {};
+      const reasoning = delta.reasoning_content || delta.reasoning;
+      if (reasoning && opts.onReasoning) opts.onReasoning(reasoning);
+      if (delta.content && opts.onDelta) opts.onDelta(delta.content);
+      return true;
+    }
+
+    // 流不可用（旧 Safari / 定制 WebView）：整段读回，兼容 SSE 文本与整包 JSON
+    if (!res.body || typeof res.body.getReader !== "function") {
+      const text = await res.text();
+      const chunks = text.split(/\n\n/);
+      let any = false;
+      for (const frame of chunks) {
+        for (const line of frame.split("\n")) {
+          const l = line.trim();
+          if (!l || l === "data: [DONE]") continue;
+          if (l.startsWith("data:")) any = handlePayload(l.slice(5).trim()) || any;
+        }
+      }
+      if (!any) handlePayload(text);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() || "";
+      for (const frame of frames) {
+        for (const line of frame.split("\n")) {
+          const l = line.trim();
+          if (!l.startsWith("data:")) continue;
+          const payload = l.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          handlePayload(payload);
+        }
+      }
+    }
+  }
+
   /* 从模型输出中提取 JSON（容忍代码围栏与前后缀） */
   function extractJson(text) {
     let s = String(text || "").trim();
@@ -238,7 +363,7 @@
 
   window.API = {
     presetOf, normalizeBaseUrl, detectProvider, buildProviderParams, stripReasoningParams,
-    assertSecureEndpoint, redact, translateError, callModel, extractJson, testConnection,
+    assertSecureEndpoint, redact, translateError, callModel, streamChat, extractJson, testConnection,
     maskKey, fingerprint, SECURE_OPTS,
   };
 })();

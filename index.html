@@ -38,6 +38,7 @@
 
     <nav class="tabs" aria-label="主导航">
       <button class="tab is-active" data-view="solve">解题</button>
+      <button class="tab" data-view="ask">答疑</button>
       <button class="tab" data-view="library">资料库</button>
       <button class="tab" data-view="archive">档案</button>
       <button class="tab" data-view="method">方法</button>
@@ -158,6 +159,7 @@
           <span class="run-kbd">⌘ ↵</span>
         </button>
         <p class="compose-note">Key 只存在内存，刷新即失。运行会产生真实 API 请求与费用，请使用限额子密钥。</p>
+        <p class="compose-alt">题没做完，或解答里有一步看不懂？<a href="#" data-view="ask">不用重贴整道题，直接去答疑 →</a></p>
       </aside>
 
       <section class="stage" aria-live="polite">
@@ -218,6 +220,127 @@
             <span>© 2026 azdezhishijiangtang · <a href="https://github.com/azdezhishijiangtang/sciencemind/blob/main/LICENSE" target="_blank" rel="noopener">保留所有权利</a></span>
             <span>无后端 · 无账号 · 无云同步</span>
           </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ================= 答疑 ================= -->
+  <section class="view" id="view-ask" aria-label="答疑台" hidden>
+    <div class="ask-layout">
+
+      <aside class="ask-context">
+        <div class="ask-body">
+        <div class="ask-head">
+          <div class="eyebrow"><span>ASK / TUTOR</span><span class="eyebrow-rule"></span></div>
+          <h1>卡住的地方，<br>值得说清楚。</h1>
+          <p class="ask-sub">先说你在哪一步停下、哪一行看不懂。题目可以只贴一半，也可以完全不贴。</p>
+        </div>
+
+        <div class="ask-block">
+          <div class="block-label"><span>01</span>你现在是哪种情况</div>
+          <div class="situations" id="situations" role="group" aria-label="你的情况"></div>
+        </div>
+
+        <div class="ask-field ask-field--main">
+          <div class="field-head">
+            <label for="askSituation">你在哪里卡住<span class="req">这一步最关键</span></label>
+            <span class="field-meta" id="askCount">0 字</span>
+          </div>
+          <textarea id="askSituation" rows="5" spellcheck="false"></textarea>
+          <p class="ask-hint" id="askHint"></p>
+        </div>
+
+        <details class="ask-fold" id="workField">
+          <summary>补上我的演算<span>可选 · 只贴关键几步</span></summary>
+          <textarea id="askWork" rows="4" spellcheck="false" placeholder="把你的算式和步骤贴进来。我会指出第一处有问题的地方，然后让你自己往下改，不直接给完整答案。"></textarea>
+        </details>
+
+        <div class="ask-field">
+          <div class="field-head">
+            <label for="askQuestion">题目 / 材料<span class="opt">可选，贴上会更准</span></label>
+            <span class="field-meta" id="askQCount">0 字</span>
+          </div>
+          <textarea id="askQuestion" rows="2" spellcheck="false" placeholder="贴原题，或只贴你正在做的那一问；有解答也可以一起贴。"></textarea>
+          <div class="field-tools">
+            <button class="tool" id="askImageBtn" type="button">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2z" fill="none" stroke="currentColor"/><circle cx="5.6" cy="6.6" r="1.1" fill="currentColor"/><path d="M2.5 11l3.4-3 2.5 2.2 2.3-2.6 3 3.4" fill="none" stroke="currentColor"/></svg>
+              拍题 / 拍解答
+            </button>
+            <button class="tool tool--quiet" id="askPasteBtn" type="button">读剪贴板</button>
+            <button class="tool tool--quiet" id="askDemoBtn" type="button">载入演示</button>
+            <input type="file" id="askFileInput" accept="image/*" hidden>
+          </div>
+          <div class="ask-thumb" id="askThumb" hidden>
+            <img id="askPreview" alt="题目或解答图片">
+            <div>
+              <span class="mono">已附图片</span>
+              <p>图片随本轮对话直接发给模型，不经本地 OCR。若服务商不支持视觉输入，请改用文字描述。</p>
+            </div>
+            <button class="icon-btn" id="askImageClose" type="button" aria-label="移除图片">×</button>
+          </div>
+        </div>
+
+        </div>
+
+        <div class="ask-cta">
+          <button class="run-btn" id="askSendBtn" type="button">
+            <span class="run-label">开始答疑</span>
+            <span class="run-kbd">⌘ ↵</span>
+          </button>
+          <p class="compose-note">Key 只存在内存。题目、题图与回答都留在本机；只有发出请求时，本轮内容才会传给服务商。</p>
+        </div>
+      </aside>
+
+      <section class="ask-stage" aria-live="polite">
+        <div class="ask-stage-head">
+          <div class="ask-stage-title">
+            <span class="mono">TUTOR SESSION</span>
+            <span class="ask-turn" id="askTurn">尚未开始</span>
+          </div>
+          <div class="ask-stage-actions">
+            <span class="ask-model" id="askModel">未发起请求</span>
+            <button class="tool tool--quiet" id="askClearBtn" type="button">清空对话</button>
+          </div>
+        </div>
+
+        <div class="ask-options">
+          <span class="mono">怎么讲</span>
+          <div class="chips" id="askStyles" role="group" aria-label="讲解方式"></div>
+          <span class="ask-options-sep" aria-hidden="true"></span>
+          <div class="chips chips--multi" id="askLayers" role="group" aria-label="讲解层次"></div>
+        </div>
+
+        <div class="ask-scroll" id="askScroll">
+          <div class="ask-empty" id="askEmpty">
+            <div class="empty-quote">
+              <span class="qmark">“</span>
+              <p>看不懂的那一行，<br>常常不是最难的一行，<br>而是被跳过的那一行。</p>
+            </div>
+            <div class="ask-empty-body">
+              <span class="mono">怎么说，比问什么更重要</span>
+              <p>描述得越具体，回答越接近你的问题。下面三句可以直接点开，改成你自己的情况：</p>
+              <ul class="ask-examples" id="askExamples"></ul>
+            </div>
+            <div class="empty-foot">
+              <span class="mono">NO KEY REQUIRED FOR DEMO</span>
+              <p>没有 Key 也能点「载入演示」，看一次完整的答疑：定位卡点 → 分层讲解 → 可检验的断言 → 下一步动作。</p>
+            </div>
+          </div>
+          <div class="thread" id="askThread"></div>
+        </div>
+
+        <div class="ask-reply" id="askReply" hidden>
+          <div class="followups" id="askFollowups"></div>
+          <div class="reply-box">
+            <textarea id="askFollowupInput" rows="1" placeholder="继续追问：换一步、换一种讲法，或把刚才没看懂的再拆细一点…"></textarea>
+            <button class="reply-send" id="askFollowupSend" type="button">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+              追问
+            </button>
+            <button class="reply-stop" id="askStop" type="button" hidden>停止</button>
+          </div>
+          <p class="reply-note">追问会带上本轮的题目、你的处境和前面所有回答。点「清空对话」即丢弃上下文。</p>
         </div>
       </section>
     </div>
@@ -399,6 +522,20 @@
         </div>
       </section>
 
+      <section class="method-sec">
+        <div class="method-no">07</div>
+        <div class="method-body">
+          <h2>答疑不是判题的简化版</h2>
+          <p>判题对「结论是否正确」负责，答疑对「你理解到哪一步」负责。两者门槛不同，所以不能共用同一个状态标签——答疑回答永远不会显示 <code>verified</code>，它只标「未经程序化验收」。</p>
+          <div class="tier-grid">
+            <article><span class="mono">先定位</span><h3>复述你卡在哪</h3><p>开头先说清它理解到的位置（哪一行、哪个等式）。描述不足以定位时，直接问缺什么，不猜着讲。</p></article>
+            <article><span class="mono">可检验</span><h3>每个断言都要能验</h3><p>等式、量纲、特例、极端情形、反例，至少给一种。不用「显然」「易证」代替论证。</p></article>
+            <article><span class="mono">留半步</span><h3>只指出第一处错</h3><p>你的演算出错时，说清第一处错在哪、为什么错，然后让你自己往下改，不甩一份完整解答覆盖你的过程。</p></article>
+          </div>
+          <p class="method-note">答疑同样受红线约束：不编造定理名与数据，条件不足就说缺什么。它与判题共享同一套数据边界提示词，题面、演算、资料片段都只作为数据，不作为指令。</p>
+        </div>
+      </section>
+
       <p class="page-foot">© 2026 azdezhishijiangtang · 保留所有权利（All Rights Reserved）。本仓库不是开源项目，未经事先书面许可不得复制、传播或用于任何衍生作品，详见 <a href="https://github.com/azdezhishijiangtang/sciencemind/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a>。</p>
     </div>
   </section>
@@ -406,6 +543,7 @@
 
 <nav class="mobile-tabs" aria-label="移动导航">
   <button class="is-active" data-view="solve"><svg viewBox="0 0 20 20"><path d="M4 3h12v14H4zM7 7h6M7 10h6M7 13h4" fill="none" stroke="currentColor"/></svg><span>解题</span></button>
+  <button data-view="ask"><svg viewBox="0 0 20 20"><path d="M3 4h14v9H9l-4 4v-4H3z" fill="none" stroke="currentColor"/><path d="M7 8h6M7 11h4" stroke="currentColor"/></svg><span>答疑</span></button>
   <button data-view="library"><svg viewBox="0 0 20 20"><path d="M3 4h6v13H3zM11 4h6v13h-6z" fill="none" stroke="currentColor"/></svg><span>资料</span></button>
   <button data-view="archive"><svg viewBox="0 0 20 20"><path d="M3 4h14v4H3zM4 8h12v9H4zM8 12h4" fill="none" stroke="currentColor"/></svg><span>档案</span></button>
   <button data-view="method"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor"/><path d="M10 6v5l3 2" fill="none" stroke="currentColor"/></svg><span>方法</span></button>
