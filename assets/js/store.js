@@ -58,6 +58,11 @@
   async function deleteDoc(id) { await tx("docs", "readwrite", (s) => s.delete(id)); }
 
   async function putArchive(item) { await tx("archive", "readwrite", (s) => s.put(item)); return item; }
+  async function getArchive(id) {
+    const db = await openDB();
+    const t = db.transaction("archive");
+    return reqPromise(t.objectStore("archive").get(id));
+  }
   async function allArchive() {
     const db = await openDB();
     const t = db.transaction("archive");
@@ -213,7 +218,7 @@
         hasOriginal: kind === "full" ? !!d.original : false,
         original: kind === "full" && d.original ? d.original : undefined,
       })),
-      archive: archive.map((a) => ({ id: a.id, createdAt: a.createdAt, question: a.question, status: a.status, assurance: a.assurance, markdown: a.markdown })),
+      archive: archive.map((a) => Object.assign({}, a, { markdown: a.markdown || "" })),
     };
     payload.manifest = { count: docs.length + archive.length, note: kind === "lite" ? "文本 100% / 原件 0%" : "文本与原件 100%" };
     const json = JSON.stringify(payload);
@@ -223,7 +228,7 @@
 
   window.Store = {
     openDB, putDoc, getDoc, allDocs, deleteDoc,
-    putArchive, allArchive, deleteArchive, clearArchive,
+    putArchive, getArchive, allArchive, deleteArchive, clearArchive,
     loadPrefs, savePrefs, chunkText, tokenize, buildIndex, search,
     extractPdf, extractText, buildBackup,
   };

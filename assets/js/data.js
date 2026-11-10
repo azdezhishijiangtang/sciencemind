@@ -105,6 +105,161 @@ SM.REDLINES = [
 SM.NEGATION_WINDOW = 14;
 SM.NEGATION_RE = /(不得|禁止|不要|不能|不可|避免|不许|而非|切忌|别用|不写)/;
 
+/* ---------- 降级原因分类（纯本地归类，零模型参与） ----------
+   档案里的每条降级原因都归到一扇具体的门，
+   并且能点回 METHOD 的对应段落——被拒也要被教育。 */
+SM.REASON_CODES = [
+  {
+    id: "image_unverified", label: "图片未核对",
+    hint: "题面来自图片，但没有完成人工逐字核对。",
+    anchor: "m-flow",
+    re: /图片材料未经人工核对|图片材料未完成人工核对|未勾选|未核对|userVerified|图中未提供|图中存疑|图片门槛/,
+  },
+  {
+    id: "redline", label: "红线命中",
+    hint: "叙述里出现「显然 / 易证 / 保证正确」一类的措辞。",
+    anchor: "m-redline",
+    re: /红线/,
+  },
+  {
+    id: "uncertainty", label: "候选留有不确定项",
+    hint: "解答者自己声明了尚未解决的问题。",
+    anchor: "m-flow",
+    re: /不确定项|uncertaint/i,
+  },
+  {
+    id: "objective", label: "小问未被核验",
+    hint: "某个目标没有被独立审核完整覆盖。",
+    anchor: "m-tiers",
+    re: /目标 .*未被|目标 .*必须恰好|目标覆盖率/,
+  },
+  {
+    id: "step", label: "步骤未过审",
+    hint: "有步骤没有被判为 valid。",
+    anchor: "m-tiers",
+    re: /步骤 .*未被|步骤覆盖率|步骤 .*依赖/,
+  },
+  {
+    id: "check_fail", label: "检查项 fail",
+    hint: "候选或审核员自报的检查出现 fail。",
+    anchor: "m-flow",
+    re: /检查存在 fail|检查存在.*fail/,
+  },
+  {
+    id: "verify", label: "审核未通过",
+    hint: "verifier 的 verdict 不是 pass。",
+    anchor: "m-tiers",
+    re: /verdict=|审核仍含|审核未通过/,
+  },
+  {
+    id: "independence", label: "审核同源",
+    hint: "解题与审核来自同一模型，独立性不足。",
+    anchor: "m-tiers",
+    re: /同源|独立性(不足|有限)/,
+  },
+  {
+    id: "evidence", label: "证据不足",
+    hint: "覆盖率或交叉一致不足，撑不起 verified。",
+    anchor: "m-evidence",
+    re: /证据不足|证据不够|覆盖率不足|未形成多候选|仲裁不一致|没有候选通过/,
+  },
+  {
+    id: "adjudication", label: "仲裁未一致",
+    hint: "多候选之间没有形成一致结论。",
+    anchor: "m-tiers",
+    re: /仲裁/,
+  },
+  {
+    id: "structure", label: "结构不完整",
+    hint: "步骤依赖、id 或答案项不满足契约。",
+    anchor: "m-flow",
+    re: /结构|依赖|恰好有一个最终答案|步骤 id/,
+  },
+  {
+    id: "parse", label: "契约解析失败",
+    hint: "审题契约没能解析，降级为原始题面。",
+    anchor: "m-flow",
+    re: /契约解析|解析失败|求解失败/,
+  },
+  {
+    id: "api", label: "请求失败",
+    hint: "网络、CORS、额度或端点问题，本次没有结论。",
+    anchor: "m-boundary",
+    re: /失败：|超时|网络|CORS|端点/,
+  },
+  {
+    id: "unknown", label: "其他降级",
+    hint: "未归类的降级原因。",
+    anchor: "m-flow",
+    re: null,
+  },
+];
+
+SM.classifyReason = function (text) {
+  const s = String(text || "");
+  for (const c of SM.REASON_CODES) {
+    if (!c.re) continue;
+    if (c.re.test(s)) return c;
+  }
+  return SM.REASON_CODES[SM.REASON_CODES.length - 1];
+};
+
+/* 从一次判定结果里抽出「卡在哪几道门」，按门序去重 */
+SM.reasonsFrom = function (result) {
+  if (!result || result.status === "verified") return [];
+  const texts = [].concat(
+    result.degradeReasons || [],
+    result.warnings || [],
+    (result.evidence && !result.evidence.sufficient && result.evidence.insufficientReasons) || []
+  );
+  const map = new Map();
+  for (const t of texts) {
+    if (!t) continue;
+    const code = SM.classifyReason(t);
+    if (!map.has(code.id)) {
+      map.set(code.id, {
+        id: code.id, label: code.label, hint: code.hint, anchor: code.anchor,
+        detail: String(t).replace(/^候选 \d+ 未通过验收：/, "").slice(0, 110), count: 1,
+      });
+    } else {
+      map.get(code.id).count++;
+    }
+  }
+  if (!map.size) {
+    const c = SM.REASON_CODES[SM.REASON_CODES.length - 1];
+    map.set(c.id, { id: c.id, label: c.label, hint: c.hint, anchor: c.anchor, detail: "", count: 1 });
+  }
+  const order = SM.REASON_CODES.map((c) => c.id);
+  return Array.from(map.values()).sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+};
+
+/* ---------- 题型分类（用于回答「我老在哪类题上不过」） ---------- */
+SM.TOPICS = [
+  { id: "mechanics", label: "力学", subject: "physics", re: /力学|运动学|动力学|牛顿|动量|能量|刚体|振动|机械波|流体|万有引力|圆周运动/ },
+  { id: "electromagnetism", label: "电磁", subject: "physics", re: /电磁|电场|磁场|电路|电磁感应|电容|电感|洛伦兹|库仑|带电粒子/ },
+  { id: "thermo", label: "热学", subject: "physics", re: /热学|热力学|温度|理想气体|气体|熵|分子动理论|统计物理/ },
+  { id: "optics", label: "光学", subject: "physics", re: /光学|折射|全反射|干涉|衍射|透镜|偏振/ },
+  { id: "modern", label: "近代物理", subject: "physics", re: /近代|量子|相对论|原子|原子核|核物理|光子|光电效应|德布罗意/ },
+  { id: "algebra", label: "代数", subject: "math", re: /代数|方程|不等式|数列|多项式|二次函数|函数与导数|导数/ },
+  { id: "geometry", label: "几何", subject: "math", re: /几何|圆|三角|向量|立体|解析几何|辅助线/ },
+  { id: "number", label: "数论", subject: "math", re: /数论|整除|同余|素数|质数|不定方程|费马|欧拉定理/ },
+  { id: "combinatorics", label: "组合", subject: "math", re: /组合|计数|图论|染色|抽屉|排列|生成函数/ },
+  { id: "probability", label: "概率统计", subject: "math", re: /概率|统计|期望|方差|分布/ },
+];
+
+SM.topicOf = function (spec, question) {
+  const subject = spec && spec.subject === "physics" ? "physics" : "math";
+  const hay = ((spec && spec.domain) || "") + " " + String(question || "").slice(0, 600);
+  const pool = SM.TOPICS.filter((t) => t.subject === subject);
+  for (const t of pool) if (t.re.test(hay)) return { id: t.id, label: t.label, subject };
+  const fallback = SM.TOPICS.find((t) => t.subject === subject);
+  return { id: (fallback ? fallback.id : "algebra") + "_other", label: subject === "physics" ? "物理 · 其他" : "数学 · 其他", subject };
+};
+
+/* 重测队列：没过验收的判定，N 天后在档案页置顶提醒；重判通过才闭合。
+   这不是手动勾选「已解决」，闭合由程序在重判通过时写入。 */
+SM.RETEST = { days: 3, maxRounds: 5 };
+
 /* ---------- 这里不会发生什么（NON_EVENTS，原文） ---------- */
 SM.NON_EVENTS = [
   "不承诺绝对正确：verified 只表示通过本流程的程序化检查，不是数学证明的终审。",
@@ -228,7 +383,9 @@ SM.TUTOR_SYSTEM = `你是 ScienceMind 的竞赛助教，服务对象是准备 CM
 4. 学生贴出的演算若有错，指出第一处出错的位置与原因，然后让他自己往下走。不要用一份完整解答覆盖他的过程——那会让他失去刚建立的那半步。
 5. 不确定就说不确定；条件不足就说缺什么。绝不编造定理名、数据或「某本书上的结论」。需要引用外部结论时，标明名称与适用条件，并给出大纲内的等价写法。
 6. 公式一律 LaTeX：行内 $...$，独立 $$...$$。反斜杠与花括号按标准写法。
-7. 结尾给「下一步」：一到三条可执行的小动作（算哪个量、验证哪个特例、回看哪一步），不要写大段总结，也不要写鼓励套话。
+7. 结尾固定两段，按这个顺序写：
+   「下一步」：一到三条可执行的小动作（算哪个量、验证哪个特例、回看哪一步），不要写大段总结，也不要写鼓励套话；
+   「检验一下」：1–2 个可检验的小问题，检验他是否真的理解了刚才这一步——能自己复述、能代入一个具体的数、能判断条件变化后结论是否还成立。只出题，不附答案，并注明「非程序化验收」。
 8. 语言：简体中文，像耐心的助教。篇幅按问题定：一句话能说清的就一句话。
 
 ${SM.DATA_BOUNDARY}
@@ -264,12 +421,25 @@ SM.DEMO_THREAD = [
       "",
       "- 把「下界」和「可取」分成两行写进你的解答，这是阅卷时最容易被扣分的位置。",
       "- 自己改一道：把定义域换成 $[0,1]$，再判断最小值是多少、取等点在哪。做完这一问，这类题就不会再漏。",
+      "",
+      "### 检验一下",
+      "",
+      "> 非程序化验收：下面两问只是让你自己确认有没有真的听懂，本站不给答案，也不判定对错。",
+      "",
+      "1. 把定义域改成 $[3,5]$，最小值是多少？取等点还在 $x=2$ 吗？——如果你能立刻说出「不在，因为 $2\\notin[3,5]$」，这条你就真的过了。",
+      "2. 用一句话说出「下界」和「最小值」的区别。说不出来，就回到上面第 1 条再看一遍。",
     ].join("\n"),
     meta: { model: "本地演示", mode: "high", ms: 0, demo: true },
   },
 ];
 
-/* ---------- 示例题与本地演示（不调用模型） ---------- */SM.SAMPLE_QUESTION = "已知函数 f(x) = x² − 4x + 3，x ∈ [0, 3]。求 f(x) 的最小值，并说明取到最小值时 x 的取值。";
+/* ---------- 示例题库：三种结局，各演一次笼子怎么咬人 ----------
+   「载入示例」是无 Key 访客的唯一入口，所以示例不是一道题，而是三次判定：
+   A 通过 / B 图片未核对被降级 / C 红线命中被拦下。
+   三种结局都走真实的程序化门槛（scanRedlines / acceptanceBlockers / softBlockers），
+   不是写死的演示文案。 */
+
+SM.SAMPLE_QUESTION = "已知函数 f(x) = x² − 4x + 3，x ∈ [0, 3]。求 f(x) 的最小值，并说明取到最小值时 x 的取值。";
 
 SM.DEMO = {
   question: SM.SAMPLE_QUESTION,
@@ -314,7 +484,7 @@ SM.DEMO = {
       assumptions: [],
       steps: [
         { id: "s1", claim: "配方得 f(x) = (x−2)² − 1。", justification: "展开验证恒等。", dependsOn: [] },
-        { id: "s2", claim: "由对称性显然，最小值在 x=2 处取得，为 −1。", justification: "抛物线关于 x=2 对称，顶点即最低点。", dependsOn: ["s1"] },
+        { id: "s2", claim: "由对称性显然，最小值在 x=2 处取得，为 −1。", justification: "抛物线关于 x=2 对称，顶点即最低点，无需再比端点。", dependsOn: ["s1"] },
         { id: "s3", claim: "所以最小值为 −1。", justification: "顶点纵坐标即最小值。", dependsOn: ["s2"] },
       ],
       finalAnswers: [
@@ -322,6 +492,24 @@ SM.DEMO = {
       ],
       checks: [
         { type: "vertex", target: "顶点", status: "pass", detail: "顶点 (2,−1)。" },
+      ],
+      uncertainties: [],
+    },
+    {
+      understanding: "求二次函数在闭区间上的最小值，并指出取到位置。",
+      approach: "用导数求驻点，再与端点值比较；闭区间最值只可能出现在驻点或端点。",
+      assumptions: [],
+      steps: [
+        { id: "s1", claim: "f′(x) = 2x − 4，令 f′(x)=0 得唯一驻点 x=2。", justification: "多项式求导：x² 的导数为 2x，−4x 的导数为 −4，常数为 0；解 2x−4=0 得 x=2。", dependsOn: [] },
+        { id: "s2", claim: "f′ 在 x<2 时为负、x>2 时为正，故 f 在 x=2 处取极小值 f(2)=−1。", justification: "f′(1)=−2<0，f′(3)=2>0，导数在 x=2 两侧由负变正，确为极小值；f(2)=4−8+3=−1。", dependsOn: ["s1"] },
+        { id: "s3", claim: "端点值 f(0)=3、f(3)=0 均大于 −1，故最小值为 −1，取到于 x=2。", justification: "闭区间上的最值只可能出现在驻点或端点；三类候选值 −1、3、0 中最小者为 −1。", dependsOn: ["s1", "s2"] },
+      ],
+      finalAnswers: [
+        { objectiveId: "obj_1", value: "最小值为 −1，当且仅当 x = 2 时取得。" },
+      ],
+      checks: [
+        { type: "endpoint", target: "区间端点", status: "pass", detail: "f(0)=3，f(3)=0。" },
+        { type: "derivative", target: "驻点与单调性", status: "pass", detail: "f′ 在 x=2 两侧变号。" },
       ],
       uncertainties: [],
     },
@@ -351,13 +539,66 @@ SM.DEMO = {
       checks: [],
       summary: "数值结论正确。",
     },
+    {
+      verdict: "pass",
+      objectiveChecks: [{ objectiveId: "obj_1", checked: true, satisfied: true, evidence: "独立求导并比较端点，结果一致。" }],
+      stepChecks: [
+        { stepId: "s1", status: "valid", issue: "" },
+        { stepId: "s2", status: "valid", issue: "" },
+        { stepId: "s3", status: "valid", issue: "" },
+      ],
+      issues: [],
+      checks: [{ type: "derivative", performed: true, result: "pass", evidence: "f′ 在 2 两侧变号。" }],
+      summary: "驻点与端点均已比较，结论正确。",
+    },
   ],
   adjudication: {
     relationship: "agree",
     selectedCandidate: 0,
-    rationale: "两份候选的最终答案在数值与取等条件上一致；候选 0 给出了端点比较与完整依据，表达更完整，故选 0。",
+    rationale: "两份候选分别用配方与导数求解，最终答案在数值与取等条件上一致；候选 0 的端点比较写得最完整，故选 0。",
     residualIssues: [],
   },
 };
+
+/* 三种结局。candidates 用的是 SM.DEMO.candidates 的下标；报告同下标。
+   imageGate=true 的结局会模拟「拍题后没勾核对」。 */
+SM.DEMOS = [
+  {
+    id: "verified",
+    kicker: "结局 A",
+    label: "通过验收",
+    status: "verified",
+    title: "两份候选独立作答，交叉一致",
+    desc: "两份候选分别用配方与导数求解，审核都通过，仲裁一致。题面是文字，不涉及图片门槛。",
+    bullets: ["状态 verified · cross_checked", "证据量 sufficient", "候选台账两份都是 PASS"],
+    candidates: [0, 2],
+    adjudicate: true,
+    imageGate: false,
+  },
+  {
+    id: "review",
+    kicker: "结局 B",
+    label: "图片未核对 · 降级",
+    status: "needs_review",
+    title: "答案是对的，题面却没核对",
+    desc: "这是一道拍来的题。没有勾「我已逐字核对题面」，程序就拒绝给 verified——哪怕解答本身没问题。",
+    bullets: ["状态 needs_review，答案仍显示但不作数", "原因链回 METHOD 的「人工核对」", "真实判题里，这类记录会进重测队列"],
+    candidates: [0],
+    adjudicate: false,
+    imageGate: true,
+  },
+  {
+    id: "redline",
+    kicker: "结局 C",
+    label: "红线命中 · 拦下",
+    status: "needs_review",
+    title: "「由对称性显然」被正则拦下",
+    desc: "唯一的候选用了跳步措辞。它没有送审，直接被门槛挡在门外；页面保留它写了什么、错在哪。",
+    bullets: ["状态 needs_review，没有最终答案", "候选台账 BLOCKED，理由原样保留", "红线片段可以点回 METHOD 看规则"],
+    candidates: [1],
+    adjudicate: false,
+    imageGate: false,
+  },
+];
 
 window.SM = SM;

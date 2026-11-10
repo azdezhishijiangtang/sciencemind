@@ -26,8 +26,14 @@
     running: false,
     controller: null,
     lastResult: null,
+    lastDemo: null,
     docs: [],
     index: null,
+    archive: [],
+    archFilter: "all",
+    queueExpanded: false,
+    retest: null,
+    demoVariant: "verified",
     lastActivity: Date.now(),
     hiddenAt: 0,
   };
@@ -47,6 +53,7 @@
     bindLibrary();
     bindArchive();
     bindAsk();
+    bindMethodLinks();
     bindKeyboard();
     bindAutoLock();
     renderStatic();
@@ -93,7 +100,7 @@
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.view === name));
     $$(".mobile-tabs button").forEach((t) => t.classList.toggle("is-active", t.dataset.view === name));
     if (name === "library") renderDocList();
-    if (name === "archive") renderArchive();
+    if (name === "archive") loadArchive();
     if (scroll !== false) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -165,13 +172,7 @@
     });
     $("#qCount").textContent = q.value.trim().length + " 字";
 
-    $("#demoBtn").addEventListener("click", () => {
-      q.value = SM.SAMPLE_QUESTION;
-      $("#qCount").textContent = q.value.length + " 字";
-      state.image = null;
-      $("#imagePanel").hidden = true;
-      toast("已载入示例题。没有 Key 也可以运行本地判题演示。");
-    });
+    $("#demoBtn").addEventListener("click", openDemoPicker);
 
     $("#clearBtn").addEventListener("click", () => {
       q.value = "";
@@ -203,6 +204,18 @@
     $("#imageClose").addEventListener("click", clearImage);
     $("#verifiedCheck").addEventListener("change", updateGateNote);
     $("#ocrBtn").addEventListener("click", runOcr);
+
+    $("#thumbZoom").addEventListener("click", () => zoomImage());
+    $("#ocrZoom").addEventListener("click", () => zoomImage());
+    $$("#uncChips button").forEach((b) => b.addEventListener("click", () => {
+      const box = $("#uncertainties");
+      const list = box.value.split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
+      if (!list.includes(b.dataset.unc)) list.push(b.dataset.unc);
+      box.value = list.join("，");
+      b.classList.add("is-on");
+      toast("已登记存疑项。它会作为「信息未提供」写进契约，并阻止 verified。");
+    }));
+    $("#retestCancel").addEventListener("click", cancelRetest);
 
     $$("#candSeg button").forEach((b) => b.addEventListener("click", () => {
       $$("#candSeg button").forEach((x) => x.classList.remove("is-on"));
@@ -249,7 +262,10 @@
       $("#imagePanel").hidden = false;
       $("#ocrStatus").textContent = "未识别";
       $("#ocrStatus").className = "ocr-status";
+      $("#ocrReview").hidden = true;
       $("#verifiedCheck").checked = false;
+      $("#uncertainties").value = "";
+      $$("#uncChips button").forEach((b) => b.classList.remove("is-on"));
       updateGateNote();
       $("#imagePanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
     };
@@ -262,17 +278,33 @@
     $("#imagePreview").removeAttribute("src");
     $("#ocrStatus").textContent = "未识别";
     $("#ocrProgress").hidden = true;
+    $("#ocrReview").hidden = true;
     $("#verifiedCheck").checked = false;
+    updateGateNote();
+  }
+
+  function zoomImage() {
+    if (!state.image) return;
+    openModal("IMAGE / 原图", `<div class="zoom-wrap"><img src="${state.image.dataUrl}" alt="题目原图"></div>
+      <p class="tiny" style="margin-top:10px">对着原图逐字核对题面：上下标、根号范围、图中的角度与单位。核对完记得回去勾选。</p>`);
   }
 
   function updateGateNote() {
     const ok = $("#verifiedCheck").checked;
+    const hasImage = !!state.image;
     $("#gateNote").style.color = ok ? "var(--green)" : "var(--amber)";
     $("#gateNote").style.background = ok ? "var(--green-wash)" : "var(--amber-wash)";
     $("#gateNote").style.borderColor = ok ? "var(--green)" : "var(--amber)";
     $("#gateNote").innerHTML = ok
       ? "已记录人工核对。程序仍会检查图中存疑项；任何未解决项都会阻止 <code>verified</code>。"
       : "未勾选核对时，本题禁止输出 <code>verified</code>，只能 <code>needs_review</code>。这条由程序判定，模型无权改写。";
+    const gate = $("#runGate");
+    if (gate) {
+      gate.hidden = !(hasImage && !ok);
+      gate.textContent = hasImage && !ok ? "题面来自图片且未核对：这次判定最高只能是 needs_review。" : "";
+    }
+    const row = $("#verifyRow");
+    if (row) row.classList.toggle("is-unchecked", hasImage && !ok);
   }
 
   const TESS_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js";
@@ -321,8 +353,11 @@
       status.textContent = "已识别 · 请逐字核对（置信度仅参考）";
       status.className = "ocr-status is-done";
       bar.style.width = "100%";
+      $("#ocrReview").hidden = false;
       setTimeout(() => { prog.hidden = true; }, 900);
-      toast("识别完成。请核对公式与上下标：OCR 常把 x² 读成 2x。");
+      q.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => q.focus(), 260);
+      toast("识别完成。请对照原图核对公式与上下标：OCR 常把 x² 读成 2x。");
     } catch (err) {
       status.textContent = "识别失败 · 请手动输入";
       status.className = "ocr-status is-fail";
@@ -548,8 +583,20 @@
     const solver = state.slots[0];
     const canReal = solver.apiKey && solver.model;
     if (!canReal) {
+      if (state.retest) {
+        toast("重判需要真实模型：本地演示不会产生可闭合的记录。", true);
+        openDrawer();
+        return;
+      }
+      if (question !== SM.SAMPLE_QUESTION) {
+        toast("未配置 Key：本地演示只跑内置示例题。点「示例 · 三种结局」载入，或先配置模型。", true);
+        return;
+      }
       await runDemo(question);
       return;
+    }
+    if (state.image && !$("#verifiedCheck").checked) {
+      toast("题面来自图片且未核对：这次最高只能是 needs_review。", true);
     }
 
     state.running = true;
@@ -591,7 +638,7 @@
     budget();
 
     const diagram = state.image ? {
-      ocrText: state.image.ocrText || "（用户未运行 OCR，仅提供图片；题面由用户输入）",
+      ocrText: question,
       template: "",
       boundsNote: "不得从示意图比例、视觉长度或角度推断未给定的数值。",
       userVerified: $("#verifiedCheck").checked,
@@ -697,7 +744,70 @@
 
   /* ================= 本地演示 ================= */
 
+  /* 示例图：一张「拍下来的卷子」，让结局 B 的图片门槛有东西可核对 */
+  function demoImage() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="520" viewBox="0 0 880 520">
+      <rect width="880" height="520" fill="#f4efe3"/>
+      <rect x="34" y="26" width="812" height="468" fill="none" stroke="#cfc6b2"/>
+      <text x="52" y="58" font-family="Georgia,serif" font-size="13" fill="#8a8371">高三数学 · 第 3 页 / 共 6 页</text>
+      <text x="52" y="104" font-family="Georgia,serif" font-size="20" fill="#2b2b24">三、解答题（本题满分 12 分）</text>
+      <text x="52" y="152" font-family="Georgia,serif" font-size="17" fill="#22221c">已知函数 f(x) = x² − 4x + 3，x ∈ [0, 3]。</text>
+      <text x="52" y="184" font-family="Georgia,serif" font-size="17" fill="#22221c">求 f(x) 的最小值，并说明取到最小值时 x 的取值。</text>
+      <text x="52" y="240" font-family="Georgia,serif" font-size="14" fill="#6f6959" font-style="italic">（本题为示例扫描件，不是真实试卷）</text>
+      <line x1="52" y1="300" x2="828" y2="300" stroke="#d8d0bd"/>
+      <line x1="52" y1="344" x2="828" y2="344" stroke="#d8d0bd"/>
+      <line x1="52" y1="388" x2="828" y2="388" stroke="#d8d0bd"/>
+      <line x1="52" y1="432" x2="828" y2="432" stroke="#d8d0bd"/>
+      <g opacity="0.5" transform="rotate(-1.4 440 260)">
+        <path d="M64 210c120 10 300 6 420 12" fill="none" stroke="#b9ae95"/>
+      </g>
+    </svg>`;
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
+
+  function openDemoPicker() {
+    const items = SM.DEMOS.map((d) => `
+      <button class="demo-pick" type="button" data-demo="${d.id}">
+        <span class="dp-top"><span class="mono">${escapeHtml(d.kicker)}</span><span class="st st--${d.status === "verified" ? "verified" : "review"}"><i></i>${escapeHtml(d.status)}</span></span>
+        <b>${escapeHtml(d.label)}</b>
+        <p>${escapeHtml(d.desc)}</p>
+        <em>${d.bullets.map((x) => `<span>${escapeHtml(x)}</span>`).join("")}</em>
+        <span class="dp-go">跑这一种 →</span>
+      </button>`).join("");
+    openModal("DEMO / 三种结局", `<p class="tiny" style="margin-bottom:14px">不用 Key，三种结局各跑一次。每一种都走真实的程序化门槛（红线扫描、验收、图片门禁），不是写死的演示文案。</p><div class="demo-picks">${items}</div>`);
+    $$("[data-demo]").forEach((b) => b.addEventListener("click", () => {
+      applyDemo(b.dataset.demo);
+      closeModal();
+    }));
+  }
+
+  function applyDemo(id) {
+    const v = SM.DEMOS.find((x) => x.id === id) || SM.DEMOS[0];
+    state.demoVariant = v.id;
+    const q = $("#question");
+    q.value = SM.SAMPLE_QUESTION;
+    q.dispatchEvent(new Event("input"));
+    $("#uncertainties").value = "";
+    $$("#uncChips button").forEach((b) => b.classList.remove("is-on"));
+    cancelRetest(true);
+    if (v.imageGate) {
+      const url = demoImage();
+      state.image = { dataUrl: url, file: null, name: "sample-scan.svg", ocrText: SM.SAMPLE_QUESTION };
+      $("#imagePreview").src = url;
+      $("#imagePanel").hidden = false;
+      $("#verifiedCheck").checked = false;
+      $("#ocrStatus").textContent = "演示图片 · 未核对";
+      $("#ocrStatus").className = "ocr-status";
+      $("#ocrReview").hidden = false;
+    } else {
+      clearImage();
+    }
+    updateGateNote();
+    toast(v.kicker + "：" + v.label + "。点「开始判题」，无需 Key。");
+  }
+
   async function runDemo(question) {
+    const v = SM.DEMOS.find((x) => x.id === state.demoVariant) || SM.DEMOS[0];
     state.running = true;
     state.controller = new AbortController();
     $("#runBtn").disabled = true;
@@ -709,15 +819,80 @@
     $("#stageStatus").innerHTML = "<i></i>本地演示";
     $("#stageMeta").textContent = "不发送任何数据 · 无 API 请求";
     $("#stageScroll").scrollTop = 0;
+    $("#runId").textContent = "DEMO / " + v.id.toUpperCase();
+    $("#runTitle").textContent = v.kicker + " · " + v.label;
 
+    const demo = SM.DEMO;
+    const spec = JSON.parse(JSON.stringify(demo.spec));
+    const diagram = v.imageGate
+      ? { ocrText: question, template: "", boundsNote: "不得从示意图比例、视觉长度或角度推断未给定的数值。", userVerified: false }
+      : undefined;
+    if (diagram) { spec.diagram = diagram; spec.imageUncertainties = []; }
+
+    const evaluated = v.candidates.map((ci, i) => {
+      const candidate = JSON.parse(JSON.stringify(demo.candidates[ci]));
+      const report = JSON.parse(JSON.stringify(demo.verifications[ci]));
+      const redlines = Solver.scanRedlines(candidate);
+      const blockers = redlines.length
+        ? [`候选命中 ${redlines.length} 条输出红线，未送审，降级为 needs_review。`]
+        : Solver.acceptanceBlockers(spec, candidate, report, redlines, { diagram });
+      const soft = Solver.softBlockers(spec, { diagram });
+      return { index: i, candidate, report: redlines.length ? null : report, redlines, blockers, softBlockers: soft };
+    });
+
+    const accepted = evaluated.filter((e) => !e.blockers.length);
+    const adjudication = v.adjudicate && accepted.length >= 2 ? JSON.parse(JSON.stringify(demo.adjudication)) : null;
+    const selected = adjudication ? accepted[adjudication.selectedCandidate] : (accepted[0] || null);
+    const crossModelAgree = adjudication ? true : null;
+    const evidence = selected
+      ? Solver.computeEvidence(spec, selected.candidate, selected.report, {
+        independentVerifier: true, independentAdjudicator: !!adjudication, crossModelAgree,
+      })
+      : {
+        verifiedTargets: 0, totalTargets: (spec.objectives || []).length, verifiedSteps: 0, totalSteps: 0,
+        independentToolPasses: 0, independentToolChecks: 0, independentVerifier: true,
+        independentAdjudicator: !!adjudication, crossModelAgree: null,
+        sufficient: false, confidence: "low", insufficientReasons: ["没有候选通过程序化验收。"],
+      };
+
+    const soft = Solver.softBlockers(spec, { diagram });
+    let status = "verified";
+    let assurance = accepted.length >= 2 ? "cross_checked" : "single_verified";
+    if (!accepted.length) { status = "needs_review"; assurance = "review_required"; }
+    else if (soft.length) { status = "needs_review"; assurance = "review_required"; }
+
+    const warnings = [];
+    const degrade = [];
+    evaluated.forEach((e) => e.redlines.forEach((h) => warnings.push(
+      `红线命中 [${h.patternId}] @${h.location}（${h.field}）：${h.why} 片段「${h.excerpt}」`
+    )));
+    evaluated.forEach((e) => {
+      if (e.blockers.length) degrade.push(`候选 ${e.index + 1} 未通过验收：${e.blockers.slice(0, 3).join(" ")}`);
+    });
+    soft.forEach((x) => degrade.push(x));
+    if (status === "needs_review" && !degrade.length) degrade.push("程序化门槛拒绝了 verified。");
+
+    const result = {
+      status, assurance, spec, question,
+      candidates: evaluated,
+      selectedCandidate: selected ? selected.candidate : null,
+      selectedIndex: selected ? selected.index : null,
+      verification: selected ? selected.report : null,
+      adjudication, evidence, warnings, degradeReasons: degrade,
+      images: [], createdAt: new Date().toISOString(),
+      durationMs: 3360, usage: 0, demo: true, demoVariant: v.id,
+    };
+    result.markdown = Solver.renderResultMarkdown(result);
+
+    const redlineCount = evaluated.reduce((n, e) => n + e.redlines.length, 0);
     const steps = [
       ["extract", "审题 · 提取题目契约", "示例契约 · 1 个目标"],
-      ["solve", "独立求解", "2 路候选（示例）"],
-      ["redline", "红线扫描", "候选 2 命中 1 处"],
-      ["verify", "独立审核", "2 份完成"],
-      ["gates", "程序化验收", "1 份通过"],
-      ["adjudicate", "第三方仲裁", "agree"],
-      ["evidence", "证据量判定", "sufficient · high"],
+      ["solve", "独立求解", v.candidates.length + " 路候选（示例）"],
+      ["redline", "红线扫描", redlineCount ? redlineCount + " 处命中" : "0 处命中"],
+      ["verify", "独立审核", evaluated.filter((e) => e.report).length + " 份完成"],
+      ["gates", "程序化验收", accepted.length + " 份通过"],
+      ["adjudicate", "第三方仲裁", adjudication ? "agree" : "未启用"],
+      ["evidence", "证据量判定", evidence.confidence + " · " + (evidence.sufficient ? "证据充足" : "证据不足")],
       ["render", "确定性渲染", "Markdown 由代码组装"],
     ];
     $("#trace").innerHTML = steps.map(([id, name], i) => `
@@ -727,52 +902,22 @@
         <span class="t-name">${name}</span>
         <span class="t-note">等待</span>
       </li>`).join("");
-    $("#runTitle").textContent = "本地演示";
     $("#runClock").textContent = "0.0s";
-    $("#runId").textContent = "DEMO #001";
     $("#runBudget").innerHTML = "<span>模型调用 <b>0</b> · 不发送任何请求</span><span>示例数据 · 非真实模型输出</span>";
-
-    const demo = SM.DEMO;
-    const spec = JSON.parse(JSON.stringify(demo.spec));
-    const candidates = demo.candidates.map((c) => JSON.parse(JSON.stringify(c)));
-    const verifications = demo.verifications.map((v) => JSON.parse(JSON.stringify(v)));
 
     for (let i = 0; i < steps.length; i++) {
       if (state.controller.signal.aborted) break;
       const el = $(`[data-t="${steps[i][0]}"]`);
       el.classList.add("is-run");
       $(".t-note", el).textContent = "运行中";
-      await new Promise((r) => setTimeout(r, 420));
+      await new Promise((r) => setTimeout(r, 380));
       el.classList.remove("is-run");
-      el.classList.add(steps[i][0] === "redline" ? "is-warn" : "is-done");
+      const warn = (steps[i][0] === "redline" && redlineCount) || (steps[i][0] === "gates" && !accepted.length);
+      el.classList.add(warn ? "is-warn" : "is-done");
       $(".t-note", el).textContent = steps[i][2];
-      $("#runClock").textContent = (((i + 1) * 0.42)).toFixed(1) + "s";
+      $("#runClock").textContent = (((i + 1) * 0.38)).toFixed(1) + "s";
     }
 
-    const evaluated = candidates.map((c, i) => {
-      const redlines = Solver.scanRedlines(c);
-      const report = verifications[i];
-      const blockers = i === 0 ? [] : ["候选命中 1 条输出红线，降级为 needs_review。"];
-      return { index: i, candidate: c, report, redlines, blockers };
-    });
-    const selected = evaluated[0];
-    const evidence = Solver.computeEvidence(spec, selected.candidate, selected.report, {
-      independentVerifier: true, independentAdjudicator: true, crossModelAgree: true,
-    });
-    const warnings = [
-      "红线命中 [obvious_step] @s2（steps.s2.justification）：用「显然 / 易证」代替关键论证，是跳步最常见的藏身处。片段「…由对称性显然，最小值在 x=2 处取得…」",
-    ];
-    const degrade = ["候选 2 未通过验收：候选命中 1 条输出红线，降级为 needs_review。"];
-    const result = {
-      status: "verified", assurance: "cross_checked", spec, question,
-      candidates: evaluated, selectedCandidate: selected.candidate, selectedIndex: 0,
-      verification: selected.report,
-      adjudication: demo.adjudication,
-      evidence, warnings, degradeReasons: degrade,
-      images: [], createdAt: new Date().toISOString(),
-      durationMs: 3360, usage: 0, demo: true,
-    };
-    result.markdown = Solver.renderResultMarkdown(result);
     await presentResult(result, true);
 
     state.running = false;
@@ -789,12 +934,44 @@
 
   /* ================= 结果渲染 ================= */
 
+  function buildArchiveRecord(result, demo) {
+    const spec = result.spec || {};
+    const topic = SM.topicOf(spec, result.question);
+    const reasons = result.reasons || SM.reasonsFrom(result);
+    const rec = {
+      id: uid(), kind: "verdict", createdAt: result.createdAt,
+      question: result.question, status: result.status, assurance: result.assurance,
+      evidence: result.evidence, markdown: result.markdown, demo: !!demo,
+      subject: spec.subject || "math", domain: spec.domain || "",
+      topic, reasons,
+      warnings: (result.warnings || []).slice(0, 24),
+      redlineCount: (result.candidates || []).reduce((n, c) => n + ((c.redlines || []).length), 0),
+      rounds: 0,
+      review: null,
+    };
+    if (result.status !== "verified") {
+      const due = new Date(new Date(result.createdAt).getTime() + SM.RETEST.days * 864e5).toISOString();
+      rec.review = { dueAt: due, rounds: 0, closedAt: null };
+    }
+    return rec;
+  }
+
   async function presentResult(result, demo) {
     state.lastResult = result;
+    result.reasons = SM.reasonsFrom(result);
+    const prevRec = state.retest;
+    if (prevRec && !demo) {
+      result.retestCompare = {
+        prev: prevRec,
+        round: (prevRec.rounds || 0) + 1,
+        closed: result.status === "verified",
+        reasons: result.reasons,
+      };
+    }
     $("#stageRun").hidden = true;
     $("#stageEmpty").hidden = true;
     $("#stageResult").hidden = false;
-    $("#stageResult").innerHTML = buildResultHtml(result, demo);
+    $("#stageResult").innerHTML = buildResultHtml(result, demo, result.retestCompare);
     $("#stageScroll").scrollTop = 0;
 
     $("#stageStatus").className = "stage-status " + (result.status === "verified" ? "is-ok" : result.status === "needs_review" ? "is-warn" : "");
@@ -805,18 +982,40 @@
     bindResultActions();
     bindStepAsk();
 
-    const id = uid();
+    if (demo) {
+      const foot = $(".result-foot #footStore");
+      if (foot) foot.textContent = "本地演示 · 不写入档案";
+      return;
+    }
+
     try {
-      await Store.putArchive({
-        id, createdAt: result.createdAt, question: result.question,
-        status: result.status, assurance: result.assurance,
-        evidence: result.evidence, markdown: result.markdown, demo: !!demo,
-      });
-      const all = await Store.allArchive();
-      if (all.length > 60) {
-        for (const old of all.slice(60)) await Store.deleteArchive(old.id);
+      const rec = buildArchiveRecord(result, false);
+      const prev = state.retest;
+      if (prev) {
+        rec.retestOf = prev.id;
+        rec.rounds = (prev.rounds || 0) + 1;
+        if (rec.review) rec.review.rounds = rec.rounds;
+        const old = await Store.getArchive(prev.id);
+        if (old) {
+          old.review = old.review || { dueAt: prev.dueAt, rounds: 0, closedAt: null };
+          old.review.rounds = (old.review.rounds || 0) + 1;
+          old.review.lastRetestAt = result.createdAt;
+          old.review.lastRetestId = rec.id;
+          old.review.lastStatus = result.status;
+          if (result.status === "verified") {
+            old.review.closedAt = result.createdAt;
+            old.review.closedBy = rec.id;
+          }
+          await Store.putArchive(old);
+        }
+        cancelRetest(true);
       }
-      loadArchive();
+      await Store.putArchive(rec);
+      const all = await Store.allArchive();
+      if (all.length > 200) {
+        for (const old of all.slice(200)) await Store.deleteArchive(old.id);
+      }
+      await loadArchive();
     } catch (_) {}
   }
 
@@ -829,10 +1028,15 @@
     }
   }
 
-  function buildResultHtml(r, demo) {
+  function buildResultHtml(r, demo, cmp) {
     const meta = statusMeta(r.status);
+    if (r.status === "needs_review" && !r.selectedCandidate) {
+      meta.title = "没有候选通过，未输出确定答案。";
+      meta.sub = "红线或结构门槛拦下了所有候选。失败关闭：宁可没有答案，也不编一个。";
+    }
     const ev = r.evidence;
     const c = r.selectedCandidate;
+    const reasons = r.reasons || [];
     const total = (ev.totalTargets + ev.totalSteps) || 1;
     const done = ev.verifiedTargets + ev.verifiedSteps;
     const ratio = Math.max(0, Math.min(1, done / total));
@@ -841,10 +1045,10 @@
     const bars = Array.from({ length: segs }, (_, i) =>
       `<i class="${i < onCount ? (ev.sufficient ? "on" : "warn") : ""}"></i>`).join("");
 
-    const reasons = (r.degradeReasons || []).slice(0, 3);
+    const topReasons = (r.degradeReasons || []).slice(0, 3);
     const subline = r.status === "verified"
-      ? (demo ? "本地演示：示例候选 0 通过全部门槛；演示数据不调用模型。" : `${r.candidates.filter((x) => !x.blockers.length).length} 份候选通过全部门槛，证据级别 ${r.assurance}。`)
-      : reasons[0] || meta.sub;
+      ? (demo ? "本地演示：示例候选通过全部门槛；演示数据不调用模型。" : `${r.candidates.filter((x) => !x.blockers.length).length} 份候选通过全部门槛，证据级别 ${r.assurance}。`)
+      : topReasons[0] || meta.sub;
 
     const answers = c && c.finalAnswers && c.finalAnswers.length
       ? c.finalAnswers.map((a) => `<div class="answer-row"><span class="obj">${escapeHtml(a.objectiveId)}</span><div>${formatText(a.value)}</div></div>`).join("")
@@ -862,7 +1066,7 @@
         </div>`).join("")
       : `<p class="muted-line">没有可展示的结构化步骤。</p>`;
 
-    const ledger = (r.candidates || []).length > 1
+    const ledger = (r.candidates || []).length > 1 || (r.candidates || []).some((x) => (x.blockers || []).length)
       ? `<section class="r-sec">
           <h3>候选台账</h3>
           <div class="cand-list">${(r.candidates || []).map((x, i) => {
@@ -873,11 +1077,13 @@
             const line = ok
               ? ((fb && fb.value) || "通过结构、漏审、红线与证据量检查。")
               : blockers.slice(0, 2).join(" ");
+            const rejected = !ok && fb && fb.value ? String(fb.value).slice(0, 120) : "";
             return `<div class="cand ${ok ? "is-pass" : "is-block"}">
               <span class="cand-no">0${i + 1}</span>
               <div class="cand-main">
                 <b>候选 ${i + 1} · ${ok ? (sel ? "通过验收，已采用" : "通过验收，未采用") : "被门槛拦下"}</b>
                 <p>${escapeHtml(String(line).slice(0, 160))}</p>
+                ${rejected ? `<p class="cand-ans">它给出的答案是「${escapeHtml(rejected)}」，但未通过验收，不作为答案。</p>` : ""}
               </div>
               <span class="cand-tag">${ok ? "PASS" : "BLOCKED"}</span>
             </div>`;
@@ -886,10 +1092,15 @@
         </section>`
       : "";
 
-    const warnings = (r.warnings || []).length
-      ? r.warnings.map((w) => {
-        const isRed = /红线|同源|未通过|证据不足|未核对/.test(w);
-        const tag = /红线/.test(w) ? "REDLINE" : /证据/.test(w) ? "EVIDENCE" : /同源|独立性/.test(w) ? "INDEPENDENCE" : "GATE";
+    const warnTexts = Array.from(new Set([].concat(r.degradeReasons || [], r.warnings || [])));
+    const warnings = warnTexts.length
+      ? warnTexts.map((w) => {
+        const isRed = /红线|同源|未通过|证据不足|未核对|图片/.test(w);
+        const tag = /^候选 \d+ 未通过验收/.test(w) ? "LEDGER"
+          : /红线/.test(w) ? "REDLINE"
+          : /证据/.test(w) ? "EVIDENCE"
+          : /同源|独立性/.test(w) ? "INDEPENDENCE"
+          : /图片/.test(w) ? "IMAGE GATE" : "GATE";
         return `<div class="warn-item ${isRed ? "warn-item--red" : ""}"><span class="mono">${tag}</span>${escapeHtml(w)}</div>`;
       }).join("")
       : `<p class="muted-line">没有降级或警告。仍不代表绝对正确。</p>`;
@@ -911,6 +1122,37 @@
         </div>
         <p class="tiny">${escapeHtml((ar.rationale || "").slice(0, 180))}</p>
       </div>` : "";
+
+    const reasonChips = reasons.length
+      ? `<div class="reason-strip">
+          <span class="mono">WHY / 卡在哪道门</span>
+          <div class="reason-chips">${reasons.map((x) => `
+            <button class="reason-chip" type="button" data-goto-method="${x.anchor}" title="${escapeAttr(x.hint)}">
+              ${escapeHtml(x.label)}<i>为什么</i>
+            </button>`).join("")}</div>
+        </div>`
+      : "";
+
+    const cmpHtml = cmp ? `
+      <section class="rcmp">
+        <div class="rcmp-head">
+          <span class="mono">RETEST / 第 ${cmp.round} 次重判</span>
+          <span class="rcmp-tag ${cmp.closed ? "is-closed" : ""}">${cmp.closed ? "已闭合" : "仍未通过"}</span>
+        </div>
+        <div class="rcmp-grid">
+          <div class="rcmp-col">
+            <span class="rcmp-when">上次 · ${fmtDate(cmp.prev.createdAt)}</span>
+            <span class="st st--${cmp.prev.status === "verified" ? "verified" : "review"}"><i></i>${escapeHtml(cmp.prev.status)}</span>
+            <div class="rcmp-reasons">${(cmp.prev.reasons || []).map((x) => `<span>${escapeHtml(x.label)}</span>`).join("") || "<span>无</span>"}</div>
+          </div>
+          <div class="rcmp-col">
+            <span class="rcmp-when">这次 · ${fmtDate(r.createdAt)}</span>
+            <span class="st st--${meta.cls}"><i></i>${meta.label}</span>
+            <div class="rcmp-reasons">${(cmp.reasons || []).map((x) => `<span class="${cmp.closed ? "is-ok" : ""}">${escapeHtml(x.label)}</span>`).join("") || `<span class="is-ok">全部门槛通过</span>`}</div>
+          </div>
+        </div>
+        <p class="rcmp-note">${cmp.closed ? "原记录已由程序闭合：依据是这次重判通过，不是手动勾选。" : `仍未通过，已排入下一次重测（${SM.RETEST.days} 天后）。没有「忽略」按钮。`}</p>
+      </section>` : "";
 
     const verifySummary = r.verification
       ? `<div class="side-block">
@@ -940,6 +1182,7 @@
           <button class="btn btn--sm" data-action="evidence">证据 JSON</button>
         </div>
       </div>
+      ${cmpHtml}
 
       <div class="result-grid">
         <div class="result-main">
@@ -958,6 +1201,7 @@
           </section>
           <section class="r-sec">
             <h3>降级与警告</h3>
+            ${reasonChips}
             <div class="warn-list">${warnings}</div>
           </section>
           <section class="r-sec">
@@ -997,13 +1241,43 @@
       </div>
       <div class="result-foot">
         <span>RUN ${r.createdAt.slice(0, 19).replace("T", " ")} · ${r.durationMs}ms</span>
-        <span>已存入本机档案 · 未上传</span>
+        <span id="footStore">已存入本机档案 · 未上传</span>
       </div>`;
   }
 
   function formatText(text) {
     const s = String(text || "");
     return escapeHtml(s).replace(/\n/g, "<br>");
+  }
+
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /* 原因 → METHOD 章节：被拒也要被教育，不做黑盒拒绝 */
+  function bindMethodLinks() {
+    document.addEventListener("click", (e) => {
+      const demo = e.target.closest("[data-open-demo]");
+      if (demo) { openDemoPicker(); return; }
+      const el = e.target.closest("[data-goto-method]");
+      if (!el) return;
+      e.preventDefault();
+      gotoMethod(el.dataset.gotoMethod);
+    });
+  }
+
+  function gotoMethod(anchor) {
+    switchView("method", false);
+    const target = document.getElementById(anchor);
+    if (!target) return;
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.classList.add("is-flash");
+      setTimeout(() => target.classList.remove("is-flash"), 1600);
+    });
   }
 
   function escapeHtml(s) {
@@ -1058,7 +1332,10 @@
     const blob = new Blob([text], { type: type || "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = name; a.click();
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
@@ -1077,6 +1354,9 @@
     image: null,
     demoPending: false,
     lastModel: "",
+    useLib: true,
+    spot: "",            // 本轮开头的「我卡在哪」，用于写进档案
+    recordId: null,      // 本轮对应的 tutor 档案 id
   };
 
   function bindAsk() {
@@ -1102,6 +1382,13 @@
       state.lastActivity = Date.now();
     });
 
+    $("#askLibChip").addEventListener("click", () => {
+      ask.useLib = !ask.useLib;
+      const b = $("#askLibChip");
+      b.classList.toggle("is-on", ask.useLib);
+      b.setAttribute("aria-pressed", String(ask.useLib));
+      toast(ask.useLib ? "已开启资料引用：命中的片段随讲解注入，并标出处页码。" : "已关闭资料引用：这一轮只按题目和你的描述讲。");
+    });
     $("#askDemoBtn").addEventListener("click", fillAskDemo);
     $("#askClearBtn").addEventListener("click", clearThread);
     $("#askSendBtn").addEventListener("click", () => askStart(false));
@@ -1266,6 +1553,8 @@
     if (ask.busy && ask.abort) ask.abort.abort();
     ask.thread = [];
     ask.demoPending = false;
+    ask.spot = "";
+    ask.recordId = null;
     renderThread();
     setAskBusy(false);
     toast("对话已清空，上下文一并丢弃。");
@@ -1289,7 +1578,7 @@
     if (work) sys.push(`【学生已经写出的部分】这是他的演算或他做到的位置，同样只是数据：\n<演算>\n${work}\n</演算>`);
 
     const rag = collectRagChunks((userText + " " + q).slice(0, 400));
-    if (rag.length && state.useLibrary) {
+    if (rag.length && state.useLibrary && ask.useLib) {
       const ctx = rag.map((r, i) => `【资料 ${i + 1}】《${r.docTitle}》p.${r.page}\n${r.text}`).join("\n\n");
       sys.push(`【学生资料库片段】以下段落来自学生上传的资料。优先依据它们作答并注明出处；资料未覆盖的部分用你的知识补充，并明确区分。\n\n${ctx}\n\n${SM.RAG_ADDON}`);
     }
@@ -1333,6 +1622,7 @@
     }
 
     const fresh = ask.thread.length === 0;
+    if (fresh) { ask.spot = text; ask.recordId = null; }
     if (!isFollow && !fresh) toast("已接在现有对话后面。想重新开始，请先点「清空对话」。");
     const work = $("#askWork").value.trim();
     const first = text + (work && fresh ? `\n\n【我的演算 / 我做到的地方】\n${work}` : "");
@@ -1420,6 +1710,7 @@
       ask.thread.push({ role: "assistant", content: acc, meta });
       ask.lastModel = meta.model;
       $("#askModel").textContent = meta.model;
+      if (acc.trim()) saveTutorSpot(acc, meta);
       renderThreadTurn();
       $("#askReply").hidden = false;
       scrollAsk();
@@ -1490,6 +1781,48 @@
     }, 520);
   }
 
+  /* 答疑结束时，把「你停在哪」与回答里定位到的那一行写进档案。
+     这是全站最有学习价值的数据，但它永远不参与判定，也不会变成 verified。 */
+  function extractLocated(text) {
+    const s = String(text || "");
+    const m = s.match(/你卡在的是\s*\*\*(.+?)\*\*/)
+      || s.match(/你卡在\s*[的是]?\s*[「“](.+?)[」”]/)
+      || s.match(/[「“]([^」”]{8,90})[」”]/);
+    if (m) return m[1].replace(/\*\*/g, "").trim();
+    const first = s.split(/\n/).find((l) => l.trim() && !/^#{1,4}\s|^>|^\d+[.)]\s/.test(l.trim()));
+    return String(first || "").replace(/\*\*/g, "").trim().slice(0, 90);
+  }
+
+  async function saveTutorSpot(answer, meta) {
+    const spot = ask.spot;
+    if (!spot) return;
+    const q = $("#askQuestion").value.trim();
+    const located = extractLocated(answer);
+    const key = tutorKey({ question: q, spot });
+    const subject = /小球|物块|电荷|磁场|电场|压强|热|光|核|量子|加速度|摩擦|电路|弹簧/.test(q + " " + spot) ? "physics" : "math";
+    try {
+      if (ask.recordId) {
+        const rec = await Store.getArchive(ask.recordId);
+        if (rec) {
+          rec.turns = (rec.turns || 1) + 1;
+          rec.updatedAt = new Date().toISOString();
+          if (located) rec.located = located;
+          await Store.putArchive(rec);
+        }
+      } else {
+        const id = uid();
+        await Store.putArchive({
+          id, kind: "tutor", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          question: q, spot, located, key, turns: 1,
+          model: meta && meta.model, demo: !!(meta && meta.demo),
+          topic: SM.topicOf({ subject }, (q + " " + spot).slice(0, 400)),
+        });
+        ask.recordId = id;
+      }
+      await loadArchive();
+    } catch (_) {}
+  }
+
   function renderThread() {
     const box = $("#askThread");
     const empty = $("#askEmpty");
@@ -1528,11 +1861,16 @@
     if (meta.mode && SM.MODE_PLAN[meta.mode]) bits.push(`思考 ${escapeHtml(SM.MODE_PLAN[meta.mode].label)}`);
     if (meta.ms) bits.push(`${(meta.ms / 1000).toFixed(1)}s`);
     if (meta.layers && meta.layers.length) bits.push(`层次 ${escapeHtml(meta.layers.join(" / "))}`);
-    if (meta.sources && meta.sources.length) bits.push(`<span class="src">引用资料 ${meta.sources.length} 段</span>`);
     if (meta.aborted) bits.push(`<span class="tag">已中断</span>`);
     else if (meta.demo) bits.push(`<span class="tag tag--demo">演示数据</span>`);
     else bits.push(`<span class="tag tag--warn">未经程序化验收</span>`);
-    return bits.map((b) => `<span>${b}</span>`).join("");
+    const tags = bits.map((b) => `<span>${b}</span>`).join("");
+    const src = meta.sources && meta.sources.length
+      ? `<details class="msg-src"><summary>资料出处 ${meta.sources.length} 段</summary><ul>${
+        meta.sources.map((x) => `<li>《${escapeHtml(x.docTitle)}》 p.${x.page}</li>`).join("")
+      }</ul></details>`
+      : "";
+    return tags + src;
   }
 
   function aiMsgHtml(m) {
@@ -1619,52 +1957,359 @@
     });
   }
 
-  /* ================= 档案 ================= */
+  /* ================= 档案 / 学习闭环 ================= */
+
+  const ARCH_FILTERS = [
+    { id: "all", label: "全部" },
+    { id: "fail", label: "未通过" },
+    { id: "retest", label: "待重测" },
+    { id: "tutor", label: "答疑卡点" },
+  ];
+
+  function tutorKey(r) {
+    return r.key || (String(r.question || "").slice(0, 40) + "|" + String(r.spot || "").slice(0, 40));
+  }
+
+  function isPending(r) {
+    return r.kind !== "tutor" && !r.demo && r.status !== "verified" && !(r.review && r.review.closedAt);
+  }
+
+  function deriveReasonsLegacy(rec) {
+    if (rec.status === "verified") return [];
+    const md = String(rec.markdown || "");
+    const i = md.indexOf("## 降级与警告");
+    const block = i >= 0 ? md.slice(i) : "";
+    const texts = block.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
+    return SM.reasonsFrom({ status: rec.status, degradeReasons: texts, warnings: [] });
+  }
+
+  function normalizeRecord(a) {
+    const rec = Object.assign({}, a);
+    rec.kind = rec.kind || "verdict";
+    if (rec.kind === "tutor") return rec;
+    if (!rec.reasons || !rec.reasons.length) rec.reasons = deriveReasonsLegacy(rec);
+    if (!rec.topic) rec.topic = SM.topicOf({ subject: rec.subject }, rec.question);
+    if (!rec.review && rec.status !== "verified" && !rec.demo) {
+      rec.review = {
+        dueAt: new Date(new Date(rec.createdAt).getTime() + SM.RETEST.days * 864e5).toISOString(),
+        rounds: 0, closedAt: null,
+      };
+    }
+    return rec;
+  }
 
   async function loadArchive() {
     try {
       const list = await Store.allArchive();
-      $("#archCount").textContent = list.length;
-      renderArchive(list);
+      state.archive = list.map(normalizeRecord);
+      $("#archCount").textContent = state.archive.length;
+      renderDashboard();
+      renderArchFilters();
+      renderArchive();
+      renderRetestQueue();
+      updateArchDot();
     } catch (_) {}
   }
 
-  async function renderArchive(list) {
-    if (!list) list = await Store.allArchive();
+  function updateArchDot() {
+    const n = state.archive.filter(isPending).length;
+    ["#archDot", "#archDotM"].forEach((sel) => {
+      const dot = $(sel);
+      if (!dot) return;
+      dot.hidden = n === 0;
+      dot.title = n ? n + " 道题到期待重测" : "";
+    });
+  }
+
+  function renderDashboard() {
+    const verdicts = state.archive.filter((r) => r.kind !== "tutor" && !r.demo);
+    const tutors = state.archive.filter((r) => r.kind === "tutor");
+    const pass = verdicts.filter((r) => r.status === "verified");
+    const fail = verdicts.filter((r) => r.status !== "verified");
+    const pending = verdicts.filter(isPending);
+
+    $("#dashStats").innerHTML = [
+      ["判定", verdicts.length, "verdict"],
+      ["通过", pass.length, "pass"],
+      ["未通过", fail.length, "fail"],
+      ["待重测", pending.length, "retest"],
+      ["答疑卡点", tutors.length, "tutor"],
+    ].map(([label, n, cls]) => `<div class="stat stat--${cls}"><b>${n}</b><span>${label}</span></div>`).join("");
+
+    /* 最近 10 次未通过：按原因聚类 */
+    const windowed = fail.slice(0, 10);
+    $("#dashWindow").textContent = windowed.length ? "最近 " + windowed.length + " 次" : "暂无记录";
+    const counts = new Map();
+    windowed.forEach((r) => (r.reasons || []).forEach((x) => {
+      if (!counts.has(x.id)) counts.set(x.id, { label: x.label, anchor: x.anchor, hint: x.hint, n: 0 });
+      counts.get(x.id).n++;
+    }));
+    const rows = Array.from(counts.values()).sort((a, b) => b.n - a.n);
+    const max = Math.max(1, ...rows.map((x) => x.n));
+    $("#reasonBars").innerHTML = rows.length
+      ? rows.map((x) => `
+        <button class="rbar" type="button" data-goto-method="${x.anchor}" title="${escapeAttr(x.hint)}">
+          <span class="rbar-label">${escapeHtml(x.label)}</span>
+          <span class="rbar-track"><i style="width:${Math.round((x.n / max) * 100)}%"></i></span>
+          <span class="rbar-n">${x.n}</span>
+        </button>`).join("")
+      : "";
+    $("#reasonNote").innerHTML = rows.length
+      ? `最近 ${windowed.length} 次未通过里，出现最多的是「${escapeHtml(rows[0].label)}」（${rows[0].n} 次）。点任意一行，跳到 METHOD 里对应的规则。`
+      : (verdicts.length
+        ? "还没有被门槛拦下的记录。保持住——但别忘了，通过只代表本次证据够，不代表绝对正确。"
+        : `还没有判定记录。<button class="link-ish" type="button" data-open-demo>载入示例 · 三种结局</button>，不用 Key，一分钟看完三种结局。`);
+
+    /* 按题型 */
+    const byTopic = new Map();
+    verdicts.forEach((r) => {
+      const t = r.topic || SM.topicOf({ subject: r.subject }, r.question);
+      if (!byTopic.has(t.id)) byTopic.set(t.id, { label: t.label, total: 0, pass: 0, reasons: new Map() });
+      const g = byTopic.get(t.id);
+      g.total++;
+      if (r.status === "verified") g.pass++;
+      else (r.reasons || []).forEach((x) => g.reasons.set(x.label, (g.reasons.get(x.label) || 0) + 1));
+    });
+    const topicRows = Array.from(byTopic.values()).sort((a, b) => (b.total - b.pass) - (a.total - a.pass) || b.total - a.total);
+    $("#topicRows").innerHTML = topicRows.length
+      ? topicRows.map((g) => {
+        const rate = Math.round((g.pass / g.total) * 100);
+        const topReason = Array.from(g.reasons.entries()).sort((a, b) => b[1] - a[1])[0];
+        return `<div class="trow">
+          <span class="trow-label">${escapeHtml(g.label)}</span>
+          <span class="trow-track"><i style="width:${rate}%"></i></span>
+          <span class="trow-n">${g.pass}/${g.total}</span>
+          <span class="trow-why">${topReason ? "常见：" + escapeHtml(topReason[0]) : "全过"}</span>
+        </div>`;
+      }).join("")
+      : `<p class="muted-line">还没有足够的数据。判过几道题之后，这里会显示每一类的通过次数与最常见的拦路原因。</p>`;
+  }
+
+  function renderArchFilters() {
+    const verdicts = state.archive.filter((r) => r.kind !== "tutor");
+    const counts = {
+      all: state.archive.length,
+      fail: verdicts.filter((r) => r.status !== "verified").length,
+      retest: state.archive.filter(isPending).length,
+      tutor: state.archive.filter((r) => r.kind === "tutor").length,
+    };
+    $("#archFilters").innerHTML = ARCH_FILTERS.map((f) =>
+      `<button class="fchip ${state.archFilter === f.id ? "is-on" : ""}" type="button" data-filter="${f.id}">
+        ${f.label}<em>${counts[f.id]}</em>
+      </button>`).join("");
+    $$("[data-filter]", $("#archFilters")).forEach((b) => b.addEventListener("click", () => {
+      state.archFilter = b.dataset.filter;
+      renderArchFilters();
+      renderArchive();
+    }));
+  }
+
+  function dueText(rec) {
+    if (!rec.review || !rec.review.dueAt) return "未排期";
+    const diff = new Date(rec.review.dueAt).getTime() - Date.now();
+    const days = Math.ceil(Math.abs(diff) / 864e5);
+    return diff <= 0 ? `已到期 ${days} 天` : `还有 ${days} 天`;
+  }
+
+  function renderRetestQueue() {
+    const box = $("#retestQueue");
+    const items = state.archive.filter(isPending).sort((a, b) => {
+      const da = (a.review && a.review.dueAt) || "";
+      const db = (b.review && b.review.dueAt) || "";
+      return da.localeCompare(db);
+    });
+    if (!items.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    const shown = state.queueExpanded ? items : items.slice(0, 3);
+    box.innerHTML = `
+      <div class="rq-head">
+        <div><span class="mono">RETEST QUEUE / 程序排期</span><h2>${items.length} 道题等着重判</h2></div>
+        <p>没过的题在 ${SM.RETEST.days} 天后置顶。重判通过，原记录才闭合；不通过就继续排队。没有「忽略」。</p>
+      </div>
+      <div class="rq-list">${shown.map((r) => `
+        <div class="rq-item">
+          <div class="rq-main">
+            <h3>${escapeHtml(String(r.question || "（无题目）").slice(0, 90))}</h3>
+            <div class="rq-meta">
+              <span class="tag">${escapeHtml((r.topic && r.topic.label) || "未分类")}</span>
+              <span class="${String(dueText(r)).startsWith("已到期") ? "is-due" : ""}">${dueText(r)}</span>
+              ${r.review && r.review.rounds ? `<span>已重判 ${r.review.rounds} 次</span>` : ""}
+            </div>
+          </div>
+          <div class="rq-reasons">${(r.reasons || []).slice(0, 3).map((x) => `<span>${escapeHtml(x.label)}</span>`).join("")}</div>
+          <button class="btn btn--sm btn--solid" type="button" data-retest="${r.id}">重判</button>
+        </div>`).join("")}</div>
+      ${items.length > 3 ? `<button class="rq-more" type="button" id="queueMore">${state.queueExpanded ? "收起" : `展开全部 ${items.length} 道`}</button>` : ""}`;
+    $$("[data-retest]", box).forEach((b) => b.addEventListener("click", () => {
+      const rec = state.archive.find((x) => x.id === b.dataset.retest);
+      if (rec) startRetest(rec);
+    }));
+    const more = $("#queueMore");
+    if (more) more.addEventListener("click", () => {
+      state.queueExpanded = !state.queueExpanded;
+      renderRetestQueue();
+    });
+  }
+
+  function startRetest(rec) {
+    state.retest = {
+      id: rec.id, createdAt: rec.createdAt, status: rec.status,
+      reasons: rec.reasons || [], rounds: (rec.review && rec.review.rounds) || 0,
+      dueAt: rec.review && rec.review.dueAt,
+    };
+    const q = $("#question");
+    q.value = rec.question || "";
+    q.dispatchEvent(new Event("input"));
+    clearImage();
+    $("#retestBanner").hidden = false;
+    $("#retestTitle").textContent = "上次没过验收" + (rec.review && rec.review.rounds ? ` · 已重判 ${rec.review.rounds} 次` : "");
+    $("#retestReasons").innerHTML = (rec.reasons || []).map((x) => `<span>${escapeHtml(x.label)}</span>`).join("") || "<span>未记录原因</span>";
+    switchView("solve");
+    setTimeout(() => {
+      $("#runBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+      toast("题目已带回。原图不在档案里，如有图片请重新拍一次并核对。");
+    }, 200);
+  }
+
+  function cancelRetest(silent) {
+    state.retest = null;
+    const b = $("#retestBanner");
+    if (b) b.hidden = true;
+    if (!silent) toast("已取消重判。题目保留，可直接改。");
+  }
+
+  function archiveItemHtml(a) {
+    const d = new Date(a.createdAt);
+    const date = d.toLocaleDateString("zh-CN") + "<br>" + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    if (a.kind === "tutor") {
+      return `<div class="arch-item arch-item--tutor" data-tutor="${a.id}">
+        <div class="date">${date}</div>
+        <div class="arch-main">
+          <div class="arch-line"><span class="mono">TUTOR / 卡点</span><span class="tag tag--tutor">未经程序化验收</span></div>
+          <h3>${escapeHtml(String(a.spot || "").slice(0, 110))}</h3>
+          ${a.located ? `<p class="arch-located">定位到：${escapeHtml(String(a.located).slice(0, 110))}</p>` : ""}
+        </div>
+        <span class="arch-tag-right">第 ${tutorOrdinal(a)} 次</span>
+      </div>`;
+    }
+    const meta = statusMeta(a.status);
+    const pending = isPending(a);
+    const closed = a.review && a.review.closedAt;
+    return `<div class="arch-item" data-id="${a.id}">
+      <div class="date">${date}</div>
+      <div class="arch-main">
+        <h3>${escapeHtml(a.question || "（无题目）")}</h3>
+        <div class="arch-tags">
+          <span class="tag">${escapeHtml((a.topic && a.topic.label) || "未分类")}</span>
+          ${(a.reasons || []).slice(0, 3).map((x) => `<span class="tag tag--reason">${escapeHtml(x.label)}</span>`).join("")}
+          ${a.rounds ? `<span class="tag">重判 #${a.rounds}</span>` : ""}
+          ${a.demo ? `<span class="tag tag--demo">演示</span>` : ""}
+          ${closed ? `<span class="tag tag--ok">已闭合</span>` : ""}
+          ${pending ? `<span class="tag tag--due">${dueText(a)}</span>` : ""}
+        </div>
+      </div>
+      <div class="arch-right">
+        <span class="st st--${meta.cls}"><i></i>${a.status}</span>
+        ${pending ? `<button class="arch-retest" type="button" data-retest="${a.id}">重判</button>` : ""}
+      </div>
+    </div>`;
+  }
+
+  function tutorOrdinal(a) {
+    const key = tutorKey(a);
+    const sibs = state.archive.filter((x) => x.kind === "tutor" && tutorKey(x) === key)
+      .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
+    return Math.max(1, sibs.findIndex((x) => x.id === a.id) + 1);
+  }
+
+  function renderArchive() {
     const wrap = $("#archiveList");
+    let list = state.archive;
+    if (state.archFilter === "fail") list = state.archive.filter((r) => r.kind !== "tutor" && r.status !== "verified");
+    else if (state.archFilter === "retest") list = state.archive.filter(isPending);
+    else if (state.archFilter === "tutor") list = state.archive.filter((r) => r.kind === "tutor");
+
     if (!list.length) {
-      wrap.innerHTML = `<div class="arch-empty"><span class="mono">NO RECORDS</span><p>还没有判定记录。回到解题，跑一道题。</p></div>`;
+      const hint = {
+        all: ["NO RECORDS", "还没有记录。回到解题跑一道题，或先看一次示例。"],
+        fail: ["NO FAILURES", "这个筛选下没有记录。通过不等于绝对正确，但至少这次证据够了。"],
+        retest: ["QUEUE EMPTY", "重测队列是空的：要么都过了，要么还没判过题。"],
+        tutor: ["NO TUTOR TRACES", "还没有答疑记录。去答疑台问一次「这一步为什么成立」，卡点会自动留在这里。"],
+      }[state.archFilter] || ["EMPTY", "没有记录。"];
+      wrap.innerHTML = `<div class="arch-empty"><span class="mono">${hint[0]}</span><p>${hint[1]}</p></div>`;
       return;
     }
-    wrap.innerHTML = list.map((a) => {
-      const meta = statusMeta(a.status);
-      const d = new Date(a.createdAt);
-      return `<div class="arch-item" data-id="${a.id}">
-        <div class="date">${d.toLocaleDateString("zh-CN")}<br>${d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</div>
-        <div>
-          <h3>${escapeHtml(a.question || "（无题目）")}</h3>
-          <p>${a.assurance || ""} · 证据 ${(a.evidence && a.evidence.confidence) || "—"}${a.demo ? " · 本地演示" : ""}</p>
-        </div>
-        <span class="st st--${meta.cls}"><i></i>${a.status}</span>
-      </div>`;
-    }).join("");
-    $$(".arch-item", wrap).forEach((el) => el.addEventListener("click", async () => {
-      const item = (await Store.allArchive()).find((x) => x.id === el.dataset.id);
+
+    wrap.innerHTML = list.map(archiveItemHtml).join("");
+    $$("[data-id]", wrap).forEach((el) => el.addEventListener("click", async (e) => {
+      if (e.target.closest("[data-retest]")) return;
+      const item = state.archive.find((x) => x.id === el.dataset.id);
       if (!item) return;
-      openModal("ARCHIVE / " + item.status, `
-        <div class="md">${Solver.mdToHtml(item.markdown)}</div>
-        <p class="tiny" style="margin-top:16px">记录于 ${item.createdAt} · 仅存本机</p>`);
+      openModal("ARCHIVE / " + item.status + " · " + fmtDate(item.createdAt), `
+        <div class="md">${Solver.mdToHtml(item.markdown || "")}</div>
+        <p class="tiny" style="margin-top:16px">记录于 ${item.createdAt} · 仅存本机${item.review && item.review.closedAt ? " · 已由第 " + (item.review.rounds + 1) + " 次重判闭合" : ""}</p>`);
       enhanceMath($("#modalBody"));
     }));
+    $$("[data-tutor]", wrap).forEach((el) => el.addEventListener("click", () => openTutorTimeline(el.dataset.tutor)));
+    $$("[data-retest]", wrap).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rec = state.archive.find((x) => x.id === b.dataset.retest);
+      if (rec) startRetest(rec);
+    }));
+  }
+
+  function openTutorTimeline(id) {
+    const rec = state.archive.find((x) => x.id === id);
+    if (!rec) return;
+    const key = tutorKey(rec);
+    const sibs = state.archive.filter((x) => x.kind === "tutor" && tutorKey(x) === key)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    const body = sibs.map((x, i) => `
+      <li>
+        <span class="mono">第 ${i + 1} 次 · ${fmtDate(x.createdAt)}</span>
+        <p class="tl-spot">${escapeHtml(x.spot || "")}</p>
+        ${x.located ? `<p class="tl-loc">定位：${escapeHtml(x.located)}</p>` : ""}
+      </li>`).join("");
+    openModal("TUTOR / 卡点时间线", `
+      <p class="tiny" style="margin-bottom:12px">${sibs.length} 次记录，只按「你停在哪」与回答定位到的那一行归档，不参与判定，也不会变成 verified。</p>
+      <ol class="timeline">${body}</ol>`);
+  }
+
+  function exportArchive(kind) {
+    if (!state.archive.length) return toast("档案为空，没有可导出的内容。", true);
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (kind === "json") {
+      const payload = {
+        format: "sciencemind-archive", formatVersion: 1,
+        exportedAt: new Date().toISOString(), count: state.archive.length,
+        note: "本地导出，不含 API Key，不生成分享链接。",
+        records: state.archive,
+      };
+      downloadText("sciencemind-archive-" + stamp + ".json", JSON.stringify(payload, null, 2), "application/json");
+      toast("已导出 JSON。文件留在本机，不经过任何服务器。");
+      return;
+    }
+    const md = state.archive.map((r) => {
+      const head = `## ${fmtDate(r.createdAt)} · ${r.kind === "tutor" ? "tutor" : r.status}`;
+      if (r.kind === "tutor") {
+        return [head, "", "**卡点**：" + (r.spot || ""), r.located ? "**定位**：" + r.located : "", "", "> 答疑记录，未经程序化验收。"].filter(Boolean).join("\n");
+      }
+      return [head, "", "**题目**：" + (r.question || "") + "", "", "**卡在哪**：" + ((r.reasons || []).map((x) => x.label).join("、") || "无"), "", r.markdown || ""].join("\n");
+    }).join("\n\n---\n\n");
+    downloadText("sciencemind-archive-" + stamp + ".md", "# ScienceMind 档案导出\n\n> 本地导出 · 共 " + state.archive.length + " 条 · 不含 API Key\n\n" + md, "text/markdown;charset=utf-8");
+    toast("已导出 Markdown。可以直接贴进错题本。");
   }
 
   function bindArchive() {
     $("#clearArchive").addEventListener("click", async () => {
-      if (!confirm("清空本机档案？此操作不可撤销。")) return;
+      if (!confirm("清空本机档案？此操作不可撤销，且会一并丢掉重测队列与答疑卡点。")) return;
       await Store.clearArchive();
+      cancelRetest(true);
       await loadArchive();
       toast("档案已清空。");
     });
+    $("#exportArchiveJson").addEventListener("click", () => exportArchive("json"));
+    $("#exportArchiveMd").addEventListener("click", () => exportArchive("md"));
   }
 
   /* ================= 资料库 ================= */
@@ -1676,6 +2321,8 @@
       $("#libDocs").textContent = state.docs.length;
       $("#libPages").textContent = state.docs.reduce((n, d) => n + (d.pageCount || 0), 0);
       $("#libChunks").textContent = state.docs.reduce((n, d) => n + (d.chunks || []).length, 0);
+      const cnt = $("#askLibCount");
+      if (cnt) cnt.textContent = state.docs.length ? state.docs.length + " 份" : "未导入";
       renderDocList();
     } catch (_) {}
   }

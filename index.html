@@ -33,14 +33,14 @@
         <circle class="brand-accent" cx="12" cy="12" r="1.4" fill="currentColor"/>
       </svg>
       <span class="brand-word">Science<span>Mind</span></span>
-      <span class="brand-ver">v11.0</span>
+      <span class="brand-ver">v11.1</span>
     </a>
 
     <nav class="tabs" aria-label="主导航">
       <button class="tab is-active" data-view="solve">解题</button>
       <button class="tab" data-view="ask">答疑</button>
       <button class="tab" data-view="library">资料库</button>
-      <button class="tab" data-view="archive">档案</button>
+      <button class="tab" data-view="archive">档案<span class="tab-dot" id="archDot" hidden></span></button>
       <button class="tab" data-view="method">方法</button>
     </nav>
 
@@ -77,18 +77,28 @@
           <p class="compose-sub">拍题、核对题面、由三个互相独立的模型求解与审核，最后交给程序化门槛逐条验收。没有通过的候选，不会被包装成答案。</p>
         </div>
 
+        <div class="retest-banner" id="retestBanner" hidden>
+          <div class="rb-head">
+            <span class="mono">RETEST / 重判</span>
+            <button class="rb-x" id="retestCancel" type="button">取消</button>
+          </div>
+          <b class="rb-title" id="retestTitle">上次没过验收</b>
+          <div class="rb-reasons" id="retestReasons"></div>
+          <p class="rb-note">上次卡住的门槛已标出。本次判完会并排对比两次结果；只有这次通过验收，原记录才会由程序闭合。</p>
+        </div>
+
         <div class="field">
           <div class="field-head">
             <label for="question">题目</label>
             <span class="field-meta" id="qCount">0 字</span>
           </div>
-          <textarea id="question" spellcheck="false" placeholder="粘贴题目原文，支持 LaTeX：&#10;&#10;设 a, b, c &gt; 0，且 a+b+c=3，证明：…&#10;&#10;没有 Key？点下方「载入示例」，可直接跑一次本地判题演示。"></textarea>
+          <textarea id="question" spellcheck="false" placeholder="粘贴题目原文，支持 LaTeX：&#10;&#10;设 a, b, c &gt; 0，且 a+b+c=3，证明：…&#10;&#10;没有 Key？点下方「示例 · 三种结局」，直接跑一次本地判题。"></textarea>
           <div class="field-tools">
             <button class="tool" id="imageBtn" type="button">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2z" fill="none" stroke="currentColor"/><circle cx="5.6" cy="6.6" r="1.1" fill="currentColor"/><path d="M2.5 11l3.4-3 2.5 2.2 2.3-2.6 3 3.4" fill="none" stroke="currentColor"/></svg>
               图片题
             </button>
-            <button class="tool" id="demoBtn" type="button">载入示例</button>
+            <button class="tool" id="demoBtn" type="button">示例 · 三种结局</button>
             <button class="tool tool--quiet" id="clearBtn" type="button">清空</button>
             <span class="tool-spacer"></span>
             <button class="tool tool--quiet" id="pasteBtn" type="button">读剪贴板</button>
@@ -102,7 +112,10 @@
             <button class="icon-btn" id="imageClose" type="button" aria-label="移除图片">×</button>
           </div>
           <div class="image-body">
-            <div class="thumb"><img id="imagePreview" alt="待识别题目图片"></div>
+            <button class="thumb" id="thumbZoom" type="button" aria-label="查看原图，逐字核对">
+              <img id="imagePreview" alt="待识别题目图片">
+              <span class="thumb-zoom">查看原图</span>
+            </button>
             <div class="image-info">
               <p class="image-note">图片不上传。识别在浏览器内完成，识别结果只是一份待核对的草稿。</p>
               <div class="image-actions">
@@ -112,14 +125,25 @@
               <div class="ocr-progress" id="ocrProgress" hidden><i></i></div>
             </div>
           </div>
-          <label class="checkline">
+          <div class="ocr-review" id="ocrReview" hidden>
+            <b>核对三件事</b>
+            <span>上下标（x² 常被读成 2x）· 根号与分式的范围 · 图中标注的角度与单位</span>
+            <button class="tool tool--quiet" id="ocrZoom" type="button">对照原图</button>
+          </div>
+          <label class="checkline" id="verifyRow">
             <input type="checkbox" id="verifiedCheck">
             <span class="box"></span>
             <span>我已逐字核对题面文字（OCR 会把 x² 读成 2x，抄错题比做错题更危险）</span>
           </label>
           <div class="subfield">
             <label for="uncertainties">图中存疑 / 未提供的信息</label>
-            <input id="uncertainties" type="text" placeholder="例如：图中角度未标注、根号范围看不清（逗号分隔）">
+            <input id="uncertainties" type="text" placeholder="例如：角度未标注、根号范围看不清（逗号分隔）">
+            <div class="unc-chips" id="uncChips">
+              <button type="button" data-unc="图中角度未标注">角度未标注</button>
+              <button type="button" data-unc="下标或平方看不清">上下标不清</button>
+              <button type="button" data-unc="符号疑似识别错误">符号存疑</button>
+              <button type="button" data-unc="单位或有效数字未给出">单位缺失</button>
+            </div>
           </div>
           <p class="gate-note" id="gateNote">未勾选核对时，本题禁止输出 <code>verified</code>，只能 <code>needs_review</code>。这条由程序判定，模型无权改写。</p>
         </div>
@@ -153,6 +177,8 @@
             </label>
           </div>
         </div>
+
+        <p class="run-gate" id="runGate" hidden></p>
 
         <button class="run-btn" id="runBtn" type="button">
           <span class="run-label">开始判题</span>
@@ -197,7 +223,7 @@
             </div>
             <div class="empty-foot">
               <span class="mono">NO KEY REQUIRED FOR DEMO</span>
-              <p>没有 API Key 也能点「载入示例 → 开始判题」，跑一次完整的本地演示，看清楚它是怎么拒绝一个候选的。</p>
+              <p>没有 API Key 也能点「示例 · 三种结局 → 开始判题」，跑一次完整的本地判定：一个通过、一个被图片门槛降级、一个被红线拦下。</p>
             </div>
           </div>
 
@@ -216,7 +242,7 @@
           <div class="result" id="stageResult" hidden></div>
 
           <div class="stage-foot">
-            <span>ScienceMind v11.0 · 程序化判题</span>
+            <span>ScienceMind v11.1 · 程序化判题</span>
             <span>© 2026 azdezhishijiangtang · <a href="https://github.com/azdezhishijiangtang/sciencemind/blob/main/LICENSE" target="_blank" rel="noopener">保留所有权利</a></span>
             <span>无后端 · 无账号 · 无云同步</span>
           </div>
@@ -309,6 +335,10 @@
           <div class="chips" id="askStyles" role="group" aria-label="讲解方式"></div>
           <span class="ask-options-sep" aria-hidden="true"></span>
           <div class="chips chips--multi" id="askLayers" role="group" aria-label="讲解层次"></div>
+          <span class="ask-options-sep" aria-hidden="true"></span>
+          <button class="chip chip--lib is-on" id="askLibChip" type="button" aria-pressed="true" title="把资料库中命中的片段随本轮讲解一起注入，并标出处页码">
+            引用资料库<em id="askLibCount">0 份</em>
+          </button>
         </div>
 
         <div class="ask-scroll" id="askScroll">
@@ -413,14 +443,43 @@
   <!-- ================= 档案 ================= -->
   <section class="view" id="view-archive" aria-label="档案" hidden>
     <div class="page">
-      <header class="page-head">
-        <div class="eyebrow"><span>ARCHIVE</span><span class="eyebrow-rule"></span></div>
-        <h1>每一道题，<br>都留下判定记录。</h1>
-        <p class="page-sub">结果连同证据量、降级原因一起存在本机。没有「手动标记已解决」的入口，也没有一键忽略检查。</p>
+      <header class="page-head page-head--split">
+        <div>
+          <div class="eyebrow"><span>ARCHIVE / 学习闭环</span><span class="eyebrow-rule"></span></div>
+          <h1>你总在哪一步，<br>被门槛拦下。</h1>
+          <p class="page-sub">档案不只记「判过什么」，还回答「我总在哪类题、哪个环节没过」。这些统计全部在本地完成，零模型参与——记录不是躺着，它在反过来盯你。</p>
+        </div>
+        <div class="arch-export">
+          <span class="mono">本地文件 · 不生成分享链接</span>
+          <div>
+            <button class="btn btn--sm" id="exportArchiveJson" type="button">导出 JSON</button>
+            <button class="btn btn--sm" id="exportArchiveMd" type="button">导出 Markdown</button>
+          </div>
+        </div>
       </header>
+
+      <div class="dash-stats" id="dashStats"></div>
+
+      <div class="retest-queue" id="retestQueue" hidden></div>
+
+      <div class="dash" id="dash">
+        <div class="dash-grid">
+          <section class="panel dash-panel">
+            <div class="panel-head"><h2>最近未通过 · 卡在哪道门</h2><span class="mono" id="dashWindow">最近 0 次</span></div>
+            <div class="reason-bars" id="reasonBars"></div>
+            <p class="dash-note" id="reasonNote"></p>
+          </section>
+          <section class="panel dash-panel">
+            <div class="panel-head"><h2>按题型 · 哪类题老不过</h2><span class="mono">通过 / 判定</span></div>
+            <div class="topic-rows" id="topicRows"></div>
+            <p class="dash-note">题型由审题契约的 domain 与题面关键词在本地归类，归类错了不影响判定结果。</p>
+          </section>
+        </div>
+      </div>
+
       <div class="archive-toolbar">
-        <div class="archive-count"><b id="archCount">0</b> 条记录</div>
-        <button class="tool tool--quiet" id="clearArchive" type="button">清空档案</button>
+        <div class="arch-filters" id="archFilters" role="group" aria-label="档案筛选"></div>
+        <div class="archive-count"><b id="archCount">0</b> 条 · <button class="link-ish" id="clearArchive" type="button">清空档案</button></div>
       </div>
       <div class="archive-list" id="archiveList"></div>
     </div>
@@ -430,12 +489,12 @@
   <section class="view" id="view-method" aria-label="方法与边界" hidden>
     <div class="page">
       <header class="page-head">
-        <div class="eyebrow"><span>METHOD / v11.0</span><span class="eyebrow-rule"></span></div>
+        <div class="eyebrow"><span>METHOD / v11.1</span><span class="eyebrow-rule"></span></div>
         <h1>它怎么判，<br>以及它不做什么。</h1>
         <p class="page-sub">ScienceMind 不承诺绝对正确。它承诺的是：每个结论都能追到证据，每个失败都能看到原因，模型自报的 pass 不算数。</p>
       </header>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-flow">
         <div class="method-no">01</div>
         <div class="method-body">
           <h2>十二道关</h2>
@@ -457,7 +516,7 @@
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-tiers">
         <div class="method-no">02</div>
         <div class="method-body">
           <h2>三档模型，三种立场</h2>
@@ -470,7 +529,7 @@
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-redline">
         <div class="method-no">03</div>
         <div class="method-body">
           <h2>红线不是判断对错，是拒绝措辞</h2>
@@ -479,7 +538,7 @@
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-evidence">
         <div class="method-no">04</div>
         <div class="method-body">
           <h2>证据量，不是置信度</h2>
@@ -499,7 +558,7 @@
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-never">
         <div class="method-no">05</div>
         <div class="method-body">
           <h2>这里不会发生什么</h2>
@@ -508,7 +567,7 @@
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-boundary">
         <div class="method-no">06</div>
         <div class="method-body">
           <h2>边界</h2>
@@ -518,11 +577,11 @@
             <div><h3>无人工金标集</h3><p>没有人工标注的题目集与对照实验，因此本产品不提供任何「正确率提升 X%」的数字。</p></div>
             <div><h3>密钥的极限</h3><p>纯静态 BYOK 无法抵御解锁期间的 XSS。密钥默认只在内存，降低的是持久化暴露面，不是硬件级隔离。</p></div>
           </div>
-          <p class="method-note">本页是 v11.0 方案的浏览器实现：判题链路、红线、证据量、图片门槛与状态语义与文档一致；OCR、资料检索与三档调用为前端近似实现，不冒充生产包的实测结论。</p>
+          <p class="method-note">本页是 v11.0 方案的浏览器实现，v11.1 在其上补了学习闭环（档案仪表盘、程序化重测、答疑卡点）。判题链路、红线、证据量、图片门槛与状态语义与文档一致；OCR、资料检索与三档调用为前端近似实现，不冒充生产包的实测结论。</p>
         </div>
       </section>
 
-      <section class="method-sec">
+      <section class="method-sec" id="m-ask">
         <div class="method-no">07</div>
         <div class="method-body">
           <h2>答疑不是判题的简化版</h2>
@@ -536,6 +595,20 @@
         </div>
       </section>
 
+      <section class="method-sec" id="m-loop">
+        <div class="method-no">08</div>
+        <div class="method-body">
+          <h2>判完之后，笼子继续管学习</h2>
+          <p>判定不是终点。每条没过验收的记录都会进入档案，由程序做三件事：归类卡点、排重测、留答疑的脚印。这里没有「标记已解决」，闭合只有一种方式——重判通过。</p>
+          <div class="tier-grid">
+            <article><span class="mono">DASHBOARD</span><h3>弱点不是感觉，是计数</h3><p>最近未通过的记录按降级原因聚类：几次卡在图片未核对、几次证据不足。统计在本地完成，不经过任何模型。</p></article>
+            <article><span class="mono">RETEST</span><h3>重测由程序排期</h3><p>没过的题在 3 天 天后置顶提醒。重判时把上次的降级原因和这次并排展示；通过后原记录自动闭合，失败则继续留在队列。</p></article>
+            <article><span class="mono">TUTOR</span><h3>卡点也留档</h3><p>答疑结束时，「你在哪一步停下」和回答定位到的那一行会写入档案，单独打 tutor 标签，永远不碰 verified 语义。</p></article>
+          </div>
+          <p class="method-note">档案页不出现「正确率 X%」，也不提供账号、云同步或分享链接。前者会背叛「证据量不是置信度」，后者会把「无后端」这块骨头抽掉。</p>
+        </div>
+      </section>
+
       <p class="page-foot">© 2026 azdezhishijiangtang · 保留所有权利（All Rights Reserved）。本仓库不是开源项目，未经事先书面许可不得复制、传播或用于任何衍生作品，详见 <a href="https://github.com/azdezhishijiangtang/sciencemind/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a>。</p>
     </div>
   </section>
@@ -545,7 +618,7 @@
   <button class="is-active" data-view="solve"><svg viewBox="0 0 20 20"><path d="M4 3h12v14H4zM7 7h6M7 10h6M7 13h4" fill="none" stroke="currentColor"/></svg><span>解题</span></button>
   <button data-view="ask"><svg viewBox="0 0 20 20"><path d="M3 4h14v9H9l-4 4v-4H3z" fill="none" stroke="currentColor"/><path d="M7 8h6M7 11h4" stroke="currentColor"/></svg><span>答疑</span></button>
   <button data-view="library"><svg viewBox="0 0 20 20"><path d="M3 4h6v13H3zM11 4h6v13h-6z" fill="none" stroke="currentColor"/></svg><span>资料</span></button>
-  <button data-view="archive"><svg viewBox="0 0 20 20"><path d="M3 4h14v4H3zM4 8h12v9H4zM8 12h4" fill="none" stroke="currentColor"/></svg><span>档案</span></button>
+  <button data-view="archive"><svg viewBox="0 0 20 20"><path d="M3 4h14v4H3zM4 8h12v9H4zM8 12h4" fill="none" stroke="currentColor"/></svg><span>档案<i class="tab-dot tab-dot--m" id="archDotM" hidden></i></span></button>
   <button data-view="method"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor"/><path d="M10 6v5l3 2" fill="none" stroke="currentColor"/></svg><span>方法</span></button>
 </nav>
 

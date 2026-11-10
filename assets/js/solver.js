@@ -249,9 +249,14 @@ ${JSON_ONLY}
     return blockers;
   }
 
+  /* 软门槛：不把候选赶出 accepted，但会把最终状态压到 needs_review。
+     图片未核对属于这一类——答案可以给你看，但不能标 verified。 */
+  function softBlockers(spec, input) {
+    return imageGateBlockers(spec, input);
+  }
+
   function acceptanceBlockers(spec, candidate, report, redlineHits, input) {
     const blockers = candidateStructureErrors(spec, candidate);
-    blockers.push(...imageGateBlockers(spec, input));
     if (redlineHits.length) blockers.push(`候选命中 ${redlineHits.length} 条输出红线，降级为 needs_review。`);
     if (report.verdict !== "pass") blockers.push(`审核 verdict=${report.verdict}。`);
     if ((report.issues || []).some((i) => i.severity !== "minor")) blockers.push("审核仍含 major 或 fatal 问题。");
@@ -575,10 +580,10 @@ ${JSON_ONLY}
     /* 5. 程序化验收 */
     const evaluated = parsed.map((p) => {
       if (!p.report) {
-        return { ...p, blockers: ["未取得独立审核报告。"], evidence: null };
+        return { ...p, blockers: ["未取得独立审核报告。"], softBlockers: [], evidence: null };
       }
       const blockers = acceptanceBlockers(spec, p.candidate, p.report, p.redlines, input);
-      return { ...p, blockers, evidence: null };
+      return { ...p, blockers, softBlockers: softBlockers(spec, input), evidence: null };
     });
     const accepted = evaluated.filter((p) => p.blockers.length === 0);
     emit({ id: "gates", state: accepted.length ? "done" : "warn", note: accepted.length + " 份通过验收" });
@@ -701,7 +706,7 @@ ${JSON_ONLY}
   }
 
   window.Solver = {
-    runSolve, scanRedlines, computeEvidence, acceptanceBlockers,
+    runSolve, scanRedlines, computeEvidence, acceptanceBlockers, softBlockers,
     renderResultMarkdown, mdToHtml, escapeHtml, candidateStructureErrors,
   };
 })();
