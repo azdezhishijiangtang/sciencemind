@@ -66,10 +66,38 @@ SM.PRESETS = [
 ];
 
 SM.MODE_PLAN = {
-  off:    { maxTokens: 4096,  temperature: 0.2, thinkingBudget: 0,     label: "关 · 4k" },
-  low:    { maxTokens: 8192,  temperature: 0.2, thinkingBudget: 2048,  label: "低 · 8k" },
-  medium: { maxTokens: 16384, temperature: 0.1, thinkingBudget: 8192,  label: "中 · 16k" },
-  high:   { maxTokens: 32768, temperature: 0,   thinkingBudget: 24576, label: "高 · 32k" },
+  off:    { maxTokens: 4096,  temperature: 0.2, thinkingBudget: 0,     label: "关 · 4k",    short: "关" },
+  low:    { maxTokens: 8192,  temperature: 0.2, thinkingBudget: 2048,  label: "低 · 8k",    short: "低" },
+  medium: { maxTokens: 16384, temperature: 0.1, thinkingBudget: 8192,  label: "中 · 16k",   short: "中" },
+  high:   { maxTokens: 32768, temperature: 0,   thinkingBudget: 24576, label: "高 · 32k",   short: "高" },
+  /* 拉满：思考预算 48k、输出上限 64k。只对「按 token 计预算」的厂商真的加长思考；
+     OpenAI 一类只认 reasoning_effort 的，high 就是它的天花板，不假装能更高。 */
+  max:    { maxTokens: 65536, temperature: 0,   thinkingBudget: 32768, label: "拉满 · 64k", short: "满", heavy: true },
+};
+
+SM.MODE_ORDER = ["off", "low", "medium", "high", "max"];
+
+/* 这一档在某个厂商身上到底生效成什么——用来在界面上说实话，而不是让「拉满」变成心理安慰。 */
+SM.modeCeiling = function (preset, mode) {
+  if (!preset || !SM.MODE_PLAN[mode]) return "";
+  const plan = SM.MODE_PLAN[mode];
+  switch (preset.thinkingStyle) {
+    case "reasoning_effort":
+      return mode === "max"
+        ? "该商只认 low / medium / high，已按 high 发送——这已是它的上限，不会更高。"
+        : "";
+    case "thinking":
+      return mode === "max"
+        ? "只开关思考，长度由模型自己决定；本站能拉满的只有输出上限 64k。"
+        : "";
+    case "enable_thinking":
+    case "thinking_budget":
+      return mode === "max" ? `思考预算 32k、输出上限 64k，审核也一起提档。` : "";
+    case "none":
+      return mode === "max" ? "该商没有推理参数，拉满只放大输出上限，不会让它想得更久。" : "";
+    default:
+      return "";
+  }
 };
 
 SM.REASONING_KEYS = ["reasoning_effort", "thinking", "enable_thinking", "thinking_budget"];

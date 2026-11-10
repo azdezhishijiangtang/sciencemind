@@ -84,7 +84,7 @@
           </div>
           <b class="rb-title" id="retestTitle">上次没过验收</b>
           <div class="rb-reasons" id="retestReasons"></div>
-          <p class="rb-note">上次卡住的门槛已标出。本次判完会并排对比两次结果；只有这次通过验收，原记录才会由程序闭合。</p>
+          <p class="rb-note" id="retestNote">上次卡住的门槛已标出。本次判完会并排对比两次结果；只有这次通过验收，原记录才会由程序闭合。</p>
         </div>
 
         <div class="field">
@@ -158,12 +158,13 @@
             </div>
           </div>
           <div class="control">
-            <div class="control-label"><span>推理档</span><em id="modeHint">32k 预算</em></div>
-            <div class="seg seg--4" id="modeSeg" role="group" aria-label="推理档">
+            <div class="control-label"><span>推理档</span><em id="modeHint">高 · 32k</em></div>
+            <div class="seg seg--5" id="modeSeg" role="group" aria-label="推理档">
               <button data-value="off" type="button">关</button>
               <button data-value="low" type="button">低</button>
               <button data-value="medium" type="button">中</button>
               <button data-value="high" class="is-on" type="button">高</button>
+              <button data-value="max" type="button" title="思考预算 48k · 输出上限 64k，耗时与费用明显增加">满</button>
             </div>
           </div>
           <div class="switch-row">

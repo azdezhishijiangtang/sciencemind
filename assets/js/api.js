@@ -25,7 +25,8 @@
     if (preset.thinkingStyle === "none" || mode === "off") return {};
     const plan = SM.MODE_PLAN[mode];
     switch (preset.thinkingStyle) {
-      case "reasoning_effort": return { reasoning_effort: mode };
+      /* 这类厂商的 effort 只到 high，传 max 会 400。假装配额不会换来更长的思考。 */
+      case "reasoning_effort": return { reasoning_effort: mode === "max" ? "high" : mode };
       case "thinking": return { thinking: { type: "enabled" } };
       case "enable_thinking": return { enable_thinking: true, thinking_budget: plan.thinkingBudget };
       case "thinking_budget": return { thinking_budget: plan.thinkingBudget };
@@ -33,9 +34,12 @@
     }
   }
 
+  /* 400 兜底：去掉推理参数，并把输出上限压回安全值。
+     64k 常常直接超出模型上下文，那才是 400 最常见的原因，只删推理参数救不回来。 */
   function stripReasoningParams(body) {
     const next = Object.assign({}, body);
     SM.REASONING_KEYS.forEach((k) => delete next[k]);
+    if (next.max_tokens > 16384) next.max_tokens = 16384;
     return next;
   }
 
@@ -146,6 +150,11 @@
           retried = true;
           sentBody = stripReasoningParams(body);
           res = await send(sentBody);
+          /* 还不行就只可能是输出上限超出了该模型的硬限制（不少模型只给 8k）。 */
+          if (!res.ok && res.status === 400) {
+            sentBody = Object.assign({}, sentBody, { max_tokens: 8192 });
+            res = await send(sentBody);
+          }
         } else {
           throw new Error(translateError(400, raw));
         }
@@ -200,13 +209,14 @@
     const plan = SM.MODE_PLAN[mode] || SM.MODE_PLAN.high;
     const signal = opts.signal;
 
-    function buildBody(withParams) {
+    function buildBody(withParams, capped, hardCap) {
+      const want = opts.maxTokens || plan.maxTokens;
       const body = {
         model: slot.model,
         messages: messages,
         stream: true,
         stream_options: { include_usage: true },
-        max_tokens: opts.maxTokens || plan.maxTokens,
+        max_tokens: hardCap ? Math.min(want, hardCap) : capped ? Math.min(want, 16384) : want,
       };
       if (preset.supportsTemperature) {
         body.temperature = opts.temperature === undefined ? plan.temperature : opts.temperature;
@@ -233,7 +243,8 @@
       if (!res.ok && res.status === 400) {
         const raw = await readError(res);
         if (looksLikeReasoningParameterError(400, raw)) {
-          res = await post(buildBody(false));
+          res = await post(buildBody(false, true));
+          if (!res.ok && res.status === 400) res = await post(buildBody(false, true, 8192));
         } else {
           throw new Error(translateError(400, raw));
         }

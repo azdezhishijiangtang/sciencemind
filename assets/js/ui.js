@@ -78,7 +78,7 @@
       });
     }
     if (p.candidates) state.candidates = p.candidates;
-    if (p.mode) state.mode = p.mode;
+    if (p.mode && SM.MODE_PLAN[p.mode]) state.mode = p.mode;
     state.strictEvidence = !!p.strictEvidence;
     state.requireDistinct = !!p.requireDistinct;
     if (typeof p.useLibrary === "boolean") state.useLibrary = p.useLibrary;
@@ -226,11 +226,15 @@
     }));
 
     $$("#modeSeg button").forEach((b) => b.addEventListener("click", () => {
-      $$("#modeSeg button").forEach((x) => x.classList.remove("is-on"));
-      b.classList.add("is-on");
-      state.mode = b.dataset.value;
-      $("#modeHint").textContent = SM.MODE_PLAN[state.mode].label;
+      const next = b.dataset.value;
+      if (state.mode === next) return;
+      state.mode = next;
+      refreshComposerValues();
       persist();
+      if (next === "max") {
+        const note = SM.modeCeiling(PRESET_BY_ID(state.slots[0].presetId), "max");
+        toast("推理档拉满：" + (note || "思考预算 32k、输出上限 64k，审核也一起提档；耗时和费用会明显上升。"));
+      }
     }));
 
     $("#useLibrary").addEventListener("change", (e) => { state.useLibrary = e.target.checked; persist(); if (state.useLibrary) loadDocs(); });
@@ -637,12 +641,20 @@
     const budget = () => { $("#runBudget").innerHTML = `<span>模型调用 <b>${callCount}</b> · 候选 ${state.candidates}</span><span>${state.mode.toUpperCase()} · 上限 ${state.candidates * 4 + 2} 次</span>`; };
     budget();
 
+    /* 重判不会把图片门槛一起「重来」：原记录里没有原图，
+       没重新拍题核对就仍然禁止 verified，否则门槛可以靠删图绕过。 */
+    const inheritedImageGate = !!(state.retest && state.retest.imageGate);
     const diagram = state.image ? {
       ocrText: question,
       template: "",
       boundsNote: "不得从示意图比例、视觉长度或角度推断未给定的数值。",
       userVerified: $("#verifiedCheck").checked,
-    } : undefined;
+    } : (inheritedImageGate ? {
+      ocrText: "（重判：未重新拍题）",
+      template: "",
+      boundsNote: "不得从示意图比例、视觉长度或角度推断未给定的数值。",
+      userVerified: false,
+    } : undefined);
 
     const uncertainties = ($("#uncertainties").value || "").split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
 
@@ -1688,6 +1700,7 @@
     try {
       await API.streamChat(slot, messages, {
         mode: state.mode && SM.MODE_PLAN[state.mode] ? state.mode : "high",
+        maxTokens: state.mode === "max" ? 16384 : undefined,
         signal: ctrl.signal,
         onDelta: (d) => {
           acc += d;
@@ -2156,18 +2169,25 @@
       id: rec.id, createdAt: rec.createdAt, status: rec.status,
       reasons: rec.reasons || [], rounds: (rec.review && rec.review.rounds) || 0,
       dueAt: rec.review && rec.review.dueAt,
+      imageGate: (rec.reasons || []).some((x) => x.id === "image_unverified"),
     };
     const q = $("#question");
     q.value = rec.question || "";
     q.dispatchEvent(new Event("input"));
     clearImage();
     $("#retestBanner").hidden = false;
-    $("#retestTitle").textContent = "上次没过验收" + (rec.review && rec.review.rounds ? ` · 已重判 ${rec.review.rounds} 次` : "");
+    $("#retestTitle").textContent = (state.retest.imageGate ? "上次卡在图片未核对 · 请重新拍题" : "上次没过验收")
+      + (rec.review && rec.review.rounds ? ` · 已重判 ${rec.review.rounds} 次` : "");
     $("#retestReasons").innerHTML = (rec.reasons || []).map((x) => `<span>${escapeHtml(x.label)}</span>`).join("") || "<span>未记录原因</span>";
+    $("#retestNote").textContent = state.retest.imageGate
+      ? "档案里没有原图。没重新拍题并勾选逐字核对，本次仍禁止 verified——图片门槛不会被重判绕过去。"
+      : "上次卡住的门槛已标出。本次判完会并排对比两次结果；只有这次通过验收，原记录才会由程序闭合。";
     switchView("solve");
     setTimeout(() => {
       $("#runBtn").scrollIntoView({ behavior: "smooth", block: "center" });
-      toast("题目已带回。原图不在档案里，如有图片请重新拍一次并核对。");
+      toast(state.retest && state.retest.imageGate
+        ? "请重新拍一次题并勾选核对；没重拍，这次仍会卡在同一道门。"
+        : "题目已带回。可直接重判。");
     }, 200);
   }
 

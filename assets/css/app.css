@@ -470,7 +470,8 @@ body,
   flex-direction: column;
   gap: 14px;
 }
-.control { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.control { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.control .seg { margin-left: auto; }
 .control-label { display: flex; flex-direction: column; gap: 1px; }
 .control-label span { font-size: 12px; font-weight: 600; }
 .control-label em { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted-2); letter-spacing: 0.02em; }
@@ -496,6 +497,8 @@ body,
 .seg button:hover { color: var(--ink); }
 .seg button.is-on { background: var(--ink); color: var(--paper); }
 .seg--4 button { min-width: 30px; padding: 0 7px; }
+.seg--5 button { min-width: 26px; padding: 0 5px; }
+.seg button[data-value="max"].is-on { background: var(--red); color: var(--paper); }
 
 .switch-row { display: flex; flex-wrap: wrap; gap: 14px 20px; padding-top: 2px; }
 .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
@@ -2182,6 +2185,7 @@ body,
   .arch-item .st { grid-column: auto; justify-self: start; }
   .arch-right { grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; }
   .arch-tag-right { grid-column: 2; }
+  .seg--5 button { min-width: 32px; padding: 0 6px; }
   .dash-stats { grid-template-columns: repeat(2, 1fr); }
   .stat:last-child { grid-column: 1 / -1; }
   .stat b { font-size: 21px; }

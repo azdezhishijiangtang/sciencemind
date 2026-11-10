@@ -423,6 +423,8 @@ ${JSON_ONLY}
     const warnings = [];
     const degrade = [];
     const started = Date.now();
+    /* 拉满：求解之外的审核也跟着提档。审核草率，求解再用力也白搭。 */
+    const heavy = cfg.mode === "max";
 
     const slots = cfg.slots;
     const solverSlot = slots.solver;
@@ -528,7 +530,7 @@ ${JSON_ONLY}
         const r = await API.callModel(
           verifierSlot,
           verifierMessages(input, spec, p.candidate),
-          { mode: "medium", maxTokens: 9000 }
+          { mode: heavy ? "high" : "medium", maxTokens: heavy ? 24576 : 9000 }
         );
         let report = API.extractJson(r.content);
         report.objectiveChecks = Array.isArray(report.objectiveChecks) ? report.objectiveChecks : [];
@@ -546,7 +548,9 @@ ${JSON_ONLY}
         if (needsRepair && cfg.repair !== false && report.verdict !== "reject" && report.verdict !== "unable") {
           p.repairAttempted = true;
           try {
-            const rr = await API.callModel(solverSlot, repairMessages(input, spec, p.candidate, report), { mode: cfg.mode });
+            const rr = await API.callModel(solverSlot, repairMessages(input, spec, p.candidate, report), {
+              mode: cfg.mode, maxTokens: heavy ? 32768 : undefined,
+            });
             const fixed = API.extractJson(rr.content);
             if (fixed && Array.isArray(fixed.steps)) {
               fixed.steps = fixed.steps.map((s, k) => ({ id: s.id || "s" + (k + 1), claim: s.claim || "", justification: s.justification || "", dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn : [] }));
@@ -555,7 +559,9 @@ ${JSON_ONLY}
               fixed.uncertainties = Array.isArray(fixed.uncertainties) ? fixed.uncertainties : [];
               p.candidate = fixed;
               p.redlines = scanRedlines(fixed);
-              const vr = await API.callModel(verifierSlot, verifierMessages(input, spec, fixed), { mode: "medium", maxTokens: 9000 });
+              const vr = await API.callModel(verifierSlot, verifierMessages(input, spec, fixed), {
+                mode: heavy ? "high" : "medium", maxTokens: heavy ? 24576 : 9000,
+              });
               const rep = API.extractJson(vr.content);
               rep.objectiveChecks = Array.isArray(rep.objectiveChecks) ? rep.objectiveChecks : [];
               rep.stepChecks = Array.isArray(rep.stepChecks) ? rep.stepChecks : [];
@@ -598,7 +604,9 @@ ${JSON_ONLY}
       if (adjudicatorSlot) {
         emit({ id: "adjudicate", state: "run", note: "第三方仲裁" });
         try {
-          const r = await API.callModel(adjudicatorSlot, adjudicatorMessages(input, spec, accepted), { mode: "low", maxTokens: 6000 });
+          const r = await API.callModel(adjudicatorSlot, adjudicatorMessages(input, spec, accepted), {
+            mode: heavy ? "medium" : "low", maxTokens: heavy ? 12000 : 6000,
+          });
           adjudication = API.extractJson(r.content);
           adjudication.relationship = ["agree", "conflict", "incomparable"].includes(adjudication.relationship) ? adjudication.relationship : "incomparable";
           if (adjudication.relationship === "agree" && Number.isInteger(adjudication.selectedCandidate)) {
