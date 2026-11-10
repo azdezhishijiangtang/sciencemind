@@ -2,7 +2,7 @@
 
 **把解题关进程序化的笼子。**
 
-[![License: MIT](assets/img/license-mit.svg)](./LICENSE)
+[![License: All Rights Reserved](assets/img/license-notice.svg)](./LICENSE)
 
 一个跑在浏览器里的竞赛解题工作台（数学 / 物理，CMO、IMO、CPhO、IPhO 量级）。自带 API Key，无后端、无账号、无云同步：题图与讲义留在这台机器上，AI 请求由浏览器直连服务商，输出前必须通过一组由代码执行的验收门槛。
 
@@ -126,7 +126,7 @@
 
 ## 本地运行
 
-纯静态，无构建步骤：
+纯静态，无构建步骤（**仅在获得作者授权的前提下**）：
 
 ```bash
 git clone https://github.com/azdezhishijiangtang/sciencemind.git
@@ -139,7 +139,7 @@ python3 -m http.server 8080
 
 ### 部署
 
-仓库自带 `.github/workflows/deploy.yml`：推送到 `main` 后自动发布到 GitHub Pages。若 fork 后需要重新启用，在 **Settings → Pages → Source** 选择 **GitHub Actions** 即可。
+仓库自带 `.github/workflows/deploy.yml`：推送到 `main` 后自动发布到 GitHub Pages。若更换部署账户，需在 **Settings → Pages → Source** 重新选择 **GitHub Actions**。
 
 ---
 
@@ -179,10 +179,21 @@ LICENSE
 
 ---
 
-## License
+## 版权与使用限制
 
-本项目以 **MIT License** 发布，全文见 [LICENSE](./LICENSE)。
+**本仓库不是开源项目，保留所有权利（All Rights Reserved）。** 完整声明见 [LICENSE](./LICENSE)。
 
-你可以自由使用、修改、分发，包括商业用途，条件是保留版权声明与许可声明。软件按「原样」提供，不附带任何担保。
+本仓库全部内容——源代码、判题编排与验收逻辑、提示词与红线规则、界面设计与文案、文档、示例题目、部署配置——著作权归 **azdezhishijiangtang** 所有，**不适用 MIT / GPL / Apache-2.0 等任何开源许可证**，未向任何人授予默认使用许可。
+
+未经作者事先书面许可，禁止：
+
+1. 复制、转载、摘编、截图、克隆、镜像、上传网盘或以任何渠道分发本仓库的全部或部分内容；
+2. 将本仓库内容（含修改版、衍生版）用于自己或第三方的项目、作业、文章、视频、产品，无论商业或非商业；
+3. 出售、付费分享、打包倒卖或以任何形式牟利；
+4. 删除、遮盖或修改版权标识、作者署名及 `LICENSE` 文件。
+
+如需使用，请通过 GitHub [@azdezhishijiangtang](https://github.com/azdezhishijiangtang) 联系作者取得**事先书面授权**。
+
+页面可以公开访问，仅表示本站点可以浏览，不构成对代码与内容的任何使用授权。
 
 > 判题结果不构成对数学 / 物理结论的正确性保证。`verified` 只表示通过了本流程的程序化检查。
