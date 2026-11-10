@@ -1362,7 +1362,9 @@
       <details class="think" hidden><summary>思考过程</summary><div class="think-body"></div></details>
       <div class="msg-ai-body is-streaming"><p class="muted-line">正在读你写的位置…</p></div>
       <div class="msg-meta" hidden></div>`;
+    const userEl = $("#askThread").lastElementChild;
     $("#askThread").appendChild(node);
+    if (userEl) scrollToEl(userEl, 24);
 
     const body = node.querySelector(".msg-ai-body");
     const thinkBox = node.querySelector(".think");
@@ -1376,6 +1378,7 @@
     let think = "";
     let model = "";
     let lastPaint = 0;
+    let positioned = false;
 
     const paint = (final) => {
       const now = performance.now();
@@ -1384,7 +1387,6 @@
       body.innerHTML = Solver.mdToHtml(acc) || (think ? "" : '<p class="muted-line">正在读你写的位置…</p>');
       body.classList.toggle("is-streaming", !final);
       if (final) enhanceMath(body);
-      if (!final) scrollAsk();
     };
     const paintThink = () => {
       thinkBox.hidden = false;
@@ -1397,7 +1399,11 @@
       await API.streamChat(slot, messages, {
         mode: state.mode && SM.MODE_PLAN[state.mode] ? state.mode : "high",
         signal: ctrl.signal,
-        onDelta: (d) => { acc += d; paint(false); },
+        onDelta: (d) => {
+          acc += d;
+          if (!positioned) { positioned = true; scrollToEl(node, 52); }
+          paint(false);
+        },
         onReasoning: (r) => { think += r; paintThink(); },
         onMeta: (m) => { if (m.model) model = m.model; },
       });
@@ -1479,7 +1485,7 @@
       setAskBusy(false);
       $("#askReply").hidden = false;
       renderThreadTurn();
-      scrollAsk();
+      scrollToEl(node.previousElementSibling || node, 24);
       toast("这是本地演示，不调用模型、不发送数据。");
     }, 520);
   }
@@ -1568,6 +1574,16 @@
   function scrollAsk() {
     const el = $("#askScroll");
     el.scrollTop = el.scrollHeight;
+  }
+
+  /* 把某个节点带到滚动区顶部附近：长回答时不至于一上来就停在末尾 */
+  function scrollToEl(el, offset) {
+    const box = $("#askScroll");
+    if (!el || !box) return;
+    const r = el.getBoundingClientRect();
+    const br = box.getBoundingClientRect();
+    const next = box.scrollTop + (r.top - br.top) - (offset || 12);
+    box.scrollTop = Math.max(0, next);
   }
 
   /* 从结果页的某一步跳到答疑，并把那一步作为「看不懂的地方」带过去 */
