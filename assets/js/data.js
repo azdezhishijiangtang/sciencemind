@@ -461,10 +461,10 @@ SM.DEMO_THREAD = [
   },
 ];
 
-/* ---------- 示例题库：三种结局，各演一次笼子怎么咬人 ----------
+/* ---------- 示例题库：四种结局，各演一次笼子怎么咬人 ----------
    「载入示例」是无 Key 访客的唯一入口，所以示例不是一道题，而是三次判定：
    A 通过 / B 图片未核对被降级 / C 红线命中被拦下。
-   三种结局都走真实的程序化门槛（scanRedlines / acceptanceBlockers / softBlockers），
+   四种结局都走真实的程序化门槛（scanRedlines / ToolCheck / acceptanceBlockers / softBlockers），
    不是写死的演示文案。 */
 
 SM.SAMPLE_QUESTION = "已知函数 f(x) = x² − 4x + 3，x ∈ [0, 3]。求 f(x) 的最小值，并说明取到最小值时 x 的取值。";
@@ -504,6 +504,12 @@ SM.DEMO = {
         { type: "endpoint", target: "区间端点", status: "pass", detail: "f(0)=3，f(3)=0，均大于 −1。" },
         { type: "vertex", target: "对称轴位置", status: "pass", detail: "x=2 ∈ [0,3]。" },
       ],
+      toolChecks: [
+        { stepId: "s1", kind: "identity", lhs: "(x-2)^2-1", rhs: "x^2-4*x+3", vars: ["x"] },
+        { stepId: "s2", kind: "identity", lhs: "(2)^2-4*2+3", rhs: "-1" },
+        { stepId: "s3", kind: "identity", lhs: "(0)^2-4*0+3", rhs: "3" },
+        { stepId: "s3", kind: "identity", lhs: "(3)^2-4*3+3", rhs: "0" },
+      ],
       uncertainties: [],
     },
     {
@@ -520,6 +526,10 @@ SM.DEMO = {
       ],
       checks: [
         { type: "vertex", target: "顶点", status: "pass", detail: "顶点 (2,−1)。" },
+      ],
+      toolChecks: [
+        { stepId: "s1", kind: "identity", lhs: "(x-2)^2-1", rhs: "x^2-4*x+3", vars: ["x"] },
+        { stepId: "s3", kind: "identity", lhs: "(2)^2-4*2+3", rhs: "-1" },
       ],
       uncertainties: [],
     },
@@ -538,6 +548,29 @@ SM.DEMO = {
       checks: [
         { type: "endpoint", target: "区间端点", status: "pass", detail: "f(0)=3，f(3)=0。" },
         { type: "derivative", target: "驻点与单调性", status: "pass", detail: "f′ 在 x=2 两侧变号。" },
+      ],
+      toolChecks: [
+        { stepId: "s1", kind: "identity", lhs: "2*x-4", rhs: "2*(x-2)", vars: ["x"] },
+        { stepId: "s2", kind: "identity", lhs: "(2)^2-4*2+3", rhs: "-1" },
+        { stepId: "s3", kind: "identity", lhs: "(0)^2-4*0+3", rhs: "3" },
+      ],
+      uncertainties: [],
+    },
+    {
+      understanding: "求二次函数在闭区间上的最小值。",
+      approach: "配方后判断顶点，再比较端点。",
+      assumptions: [],
+      steps: [
+        { id: "s1", claim: "配方得 f(x) = (x−2)² − 1，即 x² − 4x + 4。", justification: "展开 (x−2)²−1 得 x²−4x+4。", dependsOn: [] },
+        { id: "s2", claim: "顶点在 x=2，最小值为 −1。", justification: "f(2)=−1。", dependsOn: ["s1"] },
+      ],
+      finalAnswers: [
+        { objectiveId: "obj_1", value: "最小值为 −1，此时 x = 2。" },
+      ],
+      checks: [],
+      toolChecks: [
+        { stepId: "s1", kind: "identity", lhs: "(x-2)^2-1", rhs: "x^2-4*x+4", vars: ["x"] },
+        { stepId: "s2", kind: "identity", lhs: "(2)^2-4*2+3", rhs: "-1" },
       ],
       uncertainties: [],
     },
@@ -579,6 +612,17 @@ SM.DEMO = {
       checks: [{ type: "derivative", performed: true, result: "pass", evidence: "f′ 在 2 两侧变号。" }],
       summary: "驻点与端点均已比较，结论正确。",
     },
+    {
+      verdict: "pass",
+      objectiveChecks: [{ objectiveId: "obj_1", checked: true, satisfied: true, evidence: "数值结论一致。" }],
+      stepChecks: [
+        { stepId: "s1", status: "valid", issue: "" },
+        { stepId: "s2", status: "valid", issue: "" },
+      ],
+      issues: [],
+      checks: [],
+      summary: "仅核对了最终数值；恒等式未独立展开。",
+    },
   ],
   adjudication: {
     relationship: "agree",
@@ -588,7 +632,7 @@ SM.DEMO = {
   },
 };
 
-/* 三种结局。candidates 用的是 SM.DEMO.candidates 的下标；报告同下标。
+/* 四种结局。candidates 用的是 SM.DEMO.candidates 的下标；报告同下标。
    imageGate=true 的结局会模拟「拍题后没勾核对」。 */
 SM.DEMOS = [
   {
@@ -627,6 +671,19 @@ SM.DEMOS = [
     adjudicate: false,
     imageGate: false,
   },
+  {
+    id: "contradiction",
+    kicker: "结局 D",
+    label: "计算矛盾 · 拦下",
+    status: "needs_review",
+    title: "答案对，配方却抄错了一个常数",
+    desc: "模型审核只看了数值，没展开恒等式。本地符号引擎把 (x−2)²−1 与 x²−4x+4 相减，得到 −1——矛盾，按失败关闭拦下。",
+    bullets: ["答案数值碰巧是对的，仍不给 verified", "工具核验标 FAIL，写明在哪一步、差多少", "这是零模型参与的程序判定"],
+    candidates: [3],
+    adjudicate: false,
+    imageGate: false,
+  },
+
 ];
 
 window.SM = SM;

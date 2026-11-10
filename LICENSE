@@ -20,7 +20,7 @@ Copyright © 2026 azdezhishijiangtang（GitHub: [@azdezhishijiangtang](https://g
 
 4. **禁止篡改声明**：不得删除、遮盖或修改内容中的版权标识、作者署名及本声明文件。
 
-5. **保留所有权利**：本仓库不采用任何开源许可证（不适用 MIT / GPL / Apache-2.0 等任何协议），未向任何人授予任何默认使用许可。
+5. **保留所有权利**：本仓库自有内容不采用任何开源许可证（不适用 MIT / GPL / Apache-2.0 等任何协议），未向任何人授予任何默认使用许可。随附的第三方组件见第三节例外。
 
 如确有使用需求，请通过 GitHub（[@azdezhishijiangtang](https://github.com/azdezhishijiangtang) 的 Issues 或私信）联系作者，取得**事先书面授权**后方可按授权范围使用。
 
@@ -32,7 +32,7 @@ Copyright © 2026 azdezhishijiangtang. All rights reserved.
 2. **No reuse** — Do not use any content from this repository (including modified or derived versions) in your own or any third party's projects, coursework, articles, videos, products, or other works, whether commercial or non-commercial.
 3. **No commercial exploitation** — Selling, pay-walling, repackaging, or profiting from this content in any form is strictly prohibited.
 4. **Do not remove this notice** — Copyright marks, author attribution, and this notice must not be removed or altered.
-5. **All rights reserved** — This repository is NOT open source. No open-source license (MIT, GPL, Apache-2.0, or any other) applies, and no usage right is granted by default.
+5. **All rights reserved** — The original content of this repository is NOT open source. No open-source license (MIT, GPL, Apache-2.0, or any other) applies to it, and no usage right is granted by default. Vendored third-party components are the exception; see Section III.
 
 For licensing requests, contact the author via GitHub (@azdezhishijiangtang) and obtain prior written permission.
 
@@ -40,7 +40,10 @@ For licensing requests, contact the author via GitHub (@azdezhishijiangtang) and
 
 ## 三、第三方与外部服务
 
-- 数学排版（KaTeX）与本地 OCR（Tesseract.js）通过公共 CDN 按需加载，本仓库不打包、不分发这些第三方库的代码，其版权归各自作者所有，并受各自许可证约束。
+- 数学排版（KaTeX）与本地 OCR（Tesseract.js）通过公共 CDN 按需加载，本仓库不打包、不分发这两个库的代码，其版权归各自作者所有，并受各自许可证约束。
+- **例外**：`assets/vendor/` 内随附两个浏览器计算库，仅用于本站的本地计算核验与计算台，各自保留原有许可证、许可原文随文件附上，且该许可**只适用于这两个库本身，不适用于本仓库的自有内容**：
+  - `math.js` 12.4.2 — Apache-2.0 — `assets/vendor/mathjs.LICENSE.txt`
+  - `nerdamer.core` 1.1.13 — MIT — `assets/vendor/nerdamer.LICENSE.txt`
 - 模型调用由使用者自行配置服务商 API Key 后由浏览器直连，受对应服务商条款约束；本项目不对任何模型输出、服务可用性或费用作出担保。
 - 示例题目、示例解答、红线规则与全部界面文案均为本项目原创编写。
 - 使用者自行导入的讲义、题图与判定记录只存在于其本机 IndexedDB，不属于本仓库内容。
@@ -48,7 +51,7 @@ For licensing requests, contact the author via GitHub (@azdezhishijiangtang) and
 
 ---
 
-*本声明适用于本仓库全部内容，自提交之时生效。*
-*This notice applies to all content in this repository and takes effect upon submission.*
+*本声明适用于本仓库自有内容，自提交之时生效；随附第三方组件依其各自许可证另行处理。*
+*This notice applies to the original content of this repository and takes effect upon submission; vendored third-party components are governed by their own licenses.*
 
 *声明日期 / Notice date: 2026-11-10*

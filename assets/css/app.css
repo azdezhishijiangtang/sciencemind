@@ -2057,7 +2057,7 @@ body,
 .rcmp-note { font-size: 11px; line-height: 1.7; color: var(--muted); margin-top: 9px; }
 
 /* 示例选择 */
-.demo-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.demo-picks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .demo-pick {
   background: var(--card);
   border: 0;
@@ -2105,6 +2105,97 @@ body,
 .msg-src summary:hover { color: var(--red); }
 .msg-src ul { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; }
 .msg-src li { font-size: 10.5px; color: var(--muted); }
+
+/* ---------- v11.2 本地计算核验 ---------- */
+
+.tool-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.tool-head .mono { color: var(--muted-2); font-size: 8.5px; }
+.tool-sum {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  margin: 10px 0 4px;
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+  border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
+  padding: 7px 0;
+}
+.tool-sum b { color: var(--green); font-weight: 500; }
+.tool-sum .is-bad { color: var(--red); }
+.tool-rows { display: flex; flex-direction: column; }
+.trow2 {
+  display: grid;
+  grid-template-columns: 56px 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.trow2:last-child { border-bottom: 0; }
+.trow2-st {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.04em;
+  text-align: center; padding: 2px 0;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.trow2--pass .trow2-st { border-color: var(--green); color: var(--green); background: var(--green-wash); }
+.trow2--numeric .trow2-st { border-color: var(--blue); color: var(--blue); }
+.trow2--fail .trow2-st { border-color: var(--red); color: var(--red); background: var(--red-wash); }
+.trow2--skip .trow2-st { border-style: dashed; }
+.trow2-id { font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); padding-top: 2px; }
+.trow2-body { min-width: 0; }
+.trow2-body code {
+  display: block;
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.trow2-body p { font-size: 11px; line-height: 1.7; color: var(--muted); margin-top: 3px; }
+.trow2--fail .trow2-body p { color: var(--red); }
+
+/* 计算台 */
+.calc-box { display: flex; flex-direction: column; gap: 10px; }
+.calc-box textarea {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.calc-box textarea:focus { outline: 1px solid var(--red); outline-offset: -1px; }
+.calc-ops { display: flex; flex-wrap: wrap; gap: 5px; }
+.calc-ops button {
+  border: 1px solid var(--line); background: transparent;
+  font-size: 11.5px; color: var(--muted);
+  padding: 5px 10px;
+}
+.calc-ops button:hover { border-color: var(--ink); color: var(--ink); }
+.calc-ops button.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.calc-out {
+  min-height: 72px;
+  border: 1px dashed var(--line);
+  background: var(--paper-2);
+  padding: 11px 13px;
+}
+.calc-result { display: flex; flex-direction: column; gap: 4px; }
+.calc-result .mono { font-size: 9px; color: var(--muted-2); }
+.calc-result b {
+  font-family: var(--font-mono); font-size: 16px; font-weight: 400;
+  color: var(--green-deep, var(--green));
+  overflow-wrap: anywhere; line-height: 1.5;
+}
+.calc-result.is-bad b { color: var(--red); font-size: 12.5px; }
+.calc-result p { font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+.calc-tpl { border-top: 1px solid var(--line); padding-top: 9px; }
+.calc-tpl summary { font-size: 11.5px; color: var(--muted); cursor: pointer; }
+.calc-tpl summary:hover { color: var(--red); }
+.calc-tpl-group { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.calc-tpl-group > .mono { font-size: 8.5px; color: var(--muted-2); }
+.calc-tpl-group > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.calc-tpl-group button {
+  border: 1px dashed var(--line); background: transparent;
+  font-size: 10.5px; color: var(--muted); padding: 4px 8px;
+}
+.calc-tpl-group button:hover { border-style: solid; border-color: var(--red); color: var(--red); }
 
 /* ---------- responsive ---------- */
 
@@ -2186,6 +2277,11 @@ body,
   .arch-right { grid-column: 2; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; }
   .arch-tag-right { grid-column: 2; }
   .seg--5 button { min-width: 32px; padding: 0 6px; }
+  .trow2 { grid-template-columns: 50px minmax(0, 1fr); gap: 8px; }
+  .trow2-id { display: none; }
+  .trow2-body { grid-column: 2; grid-row: 1; }
+  .calc-ops button { padding: 6px 9px; font-size: 11px; }
+  .calc-result b { font-size: 14px; }
   .dash-stats { grid-template-columns: repeat(2, 1fr); }
   .stat:last-child { grid-column: 1 / -1; }
   .stat b { font-size: 21px; }

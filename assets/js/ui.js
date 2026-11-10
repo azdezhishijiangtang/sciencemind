@@ -593,7 +593,7 @@
         return;
       }
       if (question !== SM.SAMPLE_QUESTION) {
-        toast("未配置 Key：本地演示只跑内置示例题。点「示例 · 三种结局」载入，或先配置模型。", true);
+        toast("未配置 Key：本地演示只跑内置示例题。点「示例 · 四种结局」载入，或先配置模型。", true);
         return;
       }
       await runDemo(question);
@@ -622,6 +622,7 @@
       ["solve", "独立求解"],
       ["redline", "红线扫描"],
       ["verify", "独立审核"],
+      ["tools", "本地计算核验"],
       ["gates", "程序化验收"],
       ["adjudicate", "第三方仲裁"],
       ["evidence", "证据量判定"],
@@ -777,6 +778,13 @@
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
 
+  function toolNote(list) {
+    const passes = list.reduce((n, e) => n + (e.tool ? e.tool.passes : 0), 0);
+    const checks = list.reduce((n, e) => n + (e.tool ? e.tool.checks : 0), 0);
+    const bad = list.reduce((n, e) => n + (e.tool ? e.tool.contradictions.length : 0), 0);
+    return checks ? `${passes}/${checks} 通过${bad ? " · " + bad + " 处矛盾" : ""}` : "无可核验等式";
+  }
+
   function openDemoPicker() {
     const items = SM.DEMOS.map((d) => `
       <button class="demo-pick" type="button" data-demo="${d.id}">
@@ -786,7 +794,7 @@
         <em>${d.bullets.map((x) => `<span>${escapeHtml(x)}</span>`).join("")}</em>
         <span class="dp-go">跑这一种 →</span>
       </button>`).join("");
-    openModal("DEMO / 三种结局", `<p class="tiny" style="margin-bottom:14px">不用 Key，三种结局各跑一次。每一种都走真实的程序化门槛（红线扫描、验收、图片门禁），不是写死的演示文案。</p><div class="demo-picks">${items}</div>`);
+    openModal("DEMO / 四种结局", `<p class="tiny" style="margin-bottom:14px">不用 Key，四种结局各跑一次。每一种都走真实的程序化门槛（红线扫描、本地符号计算、验收、图片门禁），不是写死的演示文案。</p><div class="demo-picks">${items}</div>`);
     $$("[data-demo]").forEach((b) => b.addEventListener("click", () => {
       applyDemo(b.dataset.demo);
       closeModal();
@@ -829,7 +837,7 @@
     $("#stageRun").hidden = false;
     $("#stageStatus").className = "stage-status is-run";
     $("#stageStatus").innerHTML = "<i></i>本地演示";
-    $("#stageMeta").textContent = "不发送任何数据 · 无 API 请求";
+    $("#stageMeta").textContent = "不发送题目数据 · 无 API 请求 · 引擎在本地";
     $("#stageScroll").scrollTop = 0;
     $("#runId").textContent = "DEMO / " + v.id.toUpperCase();
     $("#runTitle").textContent = v.kicker + " · " + v.label;
@@ -841,16 +849,25 @@
       : undefined;
     if (diagram) { spec.diagram = diagram; spec.imageUncertainties = []; }
 
-    const evaluated = v.candidates.map((ci, i) => {
+    const evaluated = [];
+    for (let i = 0; i < v.candidates.length; i++) {
+      const ci = v.candidates[i];
       const candidate = JSON.parse(JSON.stringify(demo.candidates[ci]));
       const report = JSON.parse(JSON.stringify(demo.verifications[ci]));
       const redlines = Solver.scanRedlines(candidate);
+      let tool = null;
+      try {
+        if (window.ToolCheck) tool = await window.ToolCheck.verify(candidate, spec);
+      } catch (_) { /* 引擎不可用时留空，不冒充通过 */ }
       const blockers = redlines.length
         ? [`候选命中 ${redlines.length} 条输出红线，未送审，降级为 needs_review。`]
         : Solver.acceptanceBlockers(spec, candidate, report, redlines, { diagram });
+      (tool && tool.contradictions || []).forEach((x) => {
+        blockers.push(`本地计算核验发现矛盾 @${x.stepId}：${x.detail}`);
+      });
       const soft = Solver.softBlockers(spec, { diagram });
-      return { index: i, candidate, report: redlines.length ? null : report, redlines, blockers, softBlockers: soft };
-    });
+      evaluated.push({ index: i, candidate, report: redlines.length ? null : report, redlines, blockers, softBlockers: soft, tool });
+    }
 
     const accepted = evaluated.filter((e) => !e.blockers.length);
     const adjudication = v.adjudicate && accepted.length >= 2 ? JSON.parse(JSON.stringify(demo.adjudication)) : null;
@@ -859,10 +876,13 @@
     const evidence = selected
       ? Solver.computeEvidence(spec, selected.candidate, selected.report, {
         independentVerifier: true, independentAdjudicator: !!adjudication, crossModelAgree,
+        tool: selected.tool || { passes: 0, checks: 0 },
       })
       : {
         verifiedTargets: 0, totalTargets: (spec.objectives || []).length, verifiedSteps: 0, totalSteps: 0,
-        independentToolPasses: 0, independentToolChecks: 0, independentVerifier: true,
+        independentToolPasses: evaluated.length === 1 && evaluated[0].tool ? evaluated[0].tool.passes : 0,
+        independentToolChecks: evaluated.length === 1 && evaluated[0].tool ? evaluated[0].tool.checks : 0,
+        independentVerifier: true,
         independentAdjudicator: !!adjudication, crossModelAgree: null,
         sufficient: false, confidence: "low", insufficientReasons: ["没有候选通过程序化验收。"],
       };
@@ -886,6 +906,7 @@
 
     const result = {
       status, assurance, spec, question,
+      tool: selected ? selected.tool : (evaluated.length === 1 ? evaluated[0].tool : null),
       candidates: evaluated,
       selectedCandidate: selected ? selected.candidate : null,
       selectedIndex: selected ? selected.index : null,
@@ -902,6 +923,7 @@
       ["solve", "独立求解", v.candidates.length + " 路候选（示例）"],
       ["redline", "红线扫描", redlineCount ? redlineCount + " 处命中" : "0 处命中"],
       ["verify", "独立审核", evaluated.filter((e) => e.report).length + " 份完成"],
+      ["tools", "本地计算核验", toolNote(evaluated)],
       ["gates", "程序化验收", accepted.length + " 份通过"],
       ["adjudicate", "第三方仲裁", adjudication ? "agree" : "未启用"],
       ["evidence", "证据量判定", evidence.confidence + " · " + (evidence.sufficient ? "证据充足" : "证据不足")],
@@ -924,7 +946,10 @@
       $(".t-note", el).textContent = "运行中";
       await new Promise((r) => setTimeout(r, 380));
       el.classList.remove("is-run");
-      const warn = (steps[i][0] === "redline" && redlineCount) || (steps[i][0] === "gates" && !accepted.length);
+      const toolConflict = evaluated.some((e) => e.tool && e.tool.contradictions.length);
+      const warn = (steps[i][0] === "redline" && redlineCount)
+        || (steps[i][0] === "gates" && !accepted.length)
+        || (steps[i][0] === "tools" && toolConflict);
       el.classList.add(warn ? "is-warn" : "is-done");
       $(".t-note", el).textContent = steps[i][2];
       $("#runClock").textContent = (((i + 1) * 0.38)).toFixed(1) + "s";
@@ -1059,7 +1084,7 @@
 
     const topReasons = (r.degradeReasons || []).slice(0, 3);
     const subline = r.status === "verified"
-      ? (demo ? "本地演示：示例候选通过全部门槛；演示数据不调用模型。" : `${r.candidates.filter((x) => !x.blockers.length).length} 份候选通过全部门槛，证据级别 ${r.assurance}。`)
+      ? (demo ? "本地演示：示例候选通过全部门槛；不调用模型，计算核验由本地引擎完成。" : `${r.candidates.filter((x) => !x.blockers.length).length} 份候选通过全部门槛，证据级别 ${r.assurance}。`)
       : topReasons[0] || meta.sub;
 
     const answers = c && c.finalAnswers && c.finalAnswers.length
@@ -1166,6 +1191,27 @@
         <p class="rcmp-note">${cmp.closed ? "原记录已由程序闭合：依据是这次重判通过，不是手动勾选。" : `仍未通过，已排入下一次重测（${SM.RETEST.days} 天后）。没有「忽略」按钮。`}</p>
       </section>` : "";
 
+    const tool = r.tool;
+    const toolHtml = (tool && (tool.rows || []).length) ? `
+      <section class="r-sec">
+        <div class="tool-head"><h3>本地计算核验</h3><span class="mono">BROWSER CAS · ZERO MODEL</span></div>
+        <p class="tiny">浏览器内的符号与数值引擎独立重算候选写下的等式，不调用模型、不发请求。PASS 是差值展开为 0；NUMERIC 只是抽样一致，不是证明；SKIP 表示程序读不懂，不计入通过数。</p>
+        <div class="tool-sum"><span>通过 <b>${tool.passes}/${tool.checks}</b></span><span>数值佐证 ${tool.numeric}</span><span>无法判定 ${tool.skipped}</span>${tool.contradictions && tool.contradictions.length ? `<span class="is-bad">矛盾 ${tool.contradictions.length}</span>` : ""}</div>
+        <div class="tool-rows">${tool.rows.map((x) => `
+          <div class="trow2 trow2--${String(x.status).toLowerCase()}">
+            <span class="trow2-st">${escapeHtml(x.status)}</span>
+            <span class="trow2-id">${escapeHtml(String(x.stepId))}</span>
+            <div class="trow2-body">
+              <code>${escapeHtml((x.lhs || "") + (x.rhs ? " = " + x.rhs : ""))}</code>
+              <p>${escapeHtml(x.detail || "")}</p>
+            </div>
+          </div>`).join("")}</div>
+      </section>` : (tool ? `
+      <section class="r-sec">
+        <div class="tool-head"><h3>本地计算核验</h3><span class="mono">BROWSER CAS · ZERO MODEL</span></div>
+        <p class="tiny">本轮没有拿到可独立计算核验的等式：模型未提供 <code>toolChecks</code>，程序也不会从中文步骤里猜等式。工具证据为空，不参与证据量判定。</p>
+      </section>` : "");
+
     const verifySummary = r.verification
       ? `<div class="side-block">
           <span class="mono">VERIFIER</span>
@@ -1178,7 +1224,7 @@
       : "";
 
     return `
-      ${demo ? `<div class="demo-strip"><span class="mono">LOCAL DEMO</span>本地演示：示例候选与示例审核，不调用任何模型、不发送任何数据。配置 Key 后可运行真实判题。</div>` : ""}
+      ${demo ? `<div class="demo-strip"><span class="mono">LOCAL DEMO</span>本地演示：示例候选与示例审核，不调用模型、不发送题目数据；符号计算由随本站加载的本地引擎完成。配置 Key 后可运行真实判题。</div>` : ""}
       <div class="result-head result-head--${meta.cls}">
         <div>
           <div class="result-kicker">
@@ -1211,6 +1257,7 @@
             <h3>可审计的步骤</h3>
             <div class="step-list">${steps}</div>
           </section>
+          ${toolHtml}
           <section class="r-sec">
             <h3>降级与警告</h3>
             ${reasonChips}
@@ -1229,6 +1276,7 @@
             <div class="ev-rows">
               <div class="ev-row"><span>目标覆盖</span><b>${ev.verifiedTargets}/${ev.totalTargets}</b></div>
               <div class="ev-row"><span>步骤覆盖</span><b>${ev.verifiedSteps}/${ev.totalSteps}</b></div>
+              <div class="ev-row"><span>本地工具核验</span><b>${ev.independentToolPasses || 0}/${ev.independentToolChecks || 0}</b></div>
               <div class="ev-row"><span>独立审核</span><b class="${ev.independentVerifier ? "yes" : "no"}">${ev.independentVerifier ? "是" : "否"}</b></div>
               <div class="ev-row"><span>独立仲裁</span><b class="${ev.independentAdjudicator ? "yes" : "no"}">${ev.independentAdjudicator ? "是" : "否"}</b></div>
               <div class="ev-row"><span>交叉一致</span><b>${ev.crossModelAgree === null ? "未形成" : ev.crossModelAgree ? "是" : "否"}</b></div>
@@ -1274,6 +1322,8 @@
     document.addEventListener("click", (e) => {
       const demo = e.target.closest("[data-open-demo]");
       if (demo) { openDemoPicker(); return; }
+      const calc = e.target.closest("[data-open-calc]");
+      if (calc) { openCalc(); return; }
       const el = e.target.closest("[data-goto-method]");
       if (!el) return;
       e.preventDefault();
@@ -2071,7 +2121,7 @@
       ? `最近 ${windowed.length} 次未通过里，出现最多的是「${escapeHtml(rows[0].label)}」（${rows[0].n} 次）。点任意一行，跳到 METHOD 里对应的规则。`
       : (verdicts.length
         ? "还没有被门槛拦下的记录。保持住——但别忘了，通过只代表本次证据够，不代表绝对正确。"
-        : `还没有判定记录。<button class="link-ish" type="button" data-open-demo>载入示例 · 三种结局</button>，不用 Key，一分钟看完三种结局。`);
+        : `还没有判定记录。<button class="link-ish" type="button" data-open-demo>载入示例 · 四种结局</button>，不用 Key，一分钟看完四种结局。`);
 
     /* 按题型 */
     const byTopic = new Map();
@@ -2463,6 +2513,70 @@
     } catch (err) {
       toast("导出失败：" + err.message, true);
     }
+  }
+
+  /* ================= 本地计算台 ================= */
+
+  const CALC_OPS = [
+    ["evaluate", "计算 / 求值"], ["simplify", "化简展开"], ["derivative", "求导 (x)"],
+    ["solve", "数值求根"], ["dimension", "量纲"], ["convert", "单位换算"],
+  ];
+  let calcOp = "evaluate";
+
+  function openCalc() {
+    const tpl = (window.ToolCheck ? window.ToolCheck.TEMPLATES : []).map((g) => `
+      <div class="calc-tpl-group">
+        <span class="mono">${escapeHtml(g.group)}</span>
+        <div>${g.items.map((i) => `<button type="button" data-calc-tpl="${escapeAttr(i.expr)}" data-calc-op-set="${escapeAttr(i.op || "evaluate")}" title="${escapeAttr(i.note || "")}">${escapeHtml(i.label)}</button>`).join("")}</div>
+      </div>`).join("");
+    openModal("LOCAL CAS / 本地计算", `
+      <p class="tiny" style="margin-bottom:12px">化简、求导、求根、单位与量纲都在浏览器内算，不调用模型、不上传、不写档案。这是给你核对的工具，不是判定结论。</p>
+      <div class="calc-box">
+        <textarea id="calcExpr" rows="2" spellcheck="false" placeholder="例如  (x-2)^2-1-(x^2-4*x+3)   或   2 kg * 3 m/s^2   或   3 km -> m"></textarea>
+        <div class="calc-ops" id="calcOps">${CALC_OPS.map(([id, label]) => `<button type="button" data-calc-op="${id}" class="${id === calcOp ? "is-on" : ""}">${label}</button>`).join("")}</div>
+        <div class="calc-out" id="calcOut"><p class="muted-line">写个式子，或点下面的常用公式。Ctrl / ⌘ + Enter 直接运行。</p></div>
+        <details class="calc-tpl"><summary>常用公式 · 点一下填入并计算</summary>${tpl}</details>
+      </div>`);
+
+    $$("[data-calc-op]", $("#modalBody")).forEach((b) => b.addEventListener("click", () => {
+      calcOp = b.dataset.calcOp;
+      $$("[data-calc-op]", $("#modalBody")).forEach((x) => x.classList.toggle("is-on", x === b));
+      runCalc();
+    }));
+    $$("[data-calc-tpl]", $("#modalBody")).forEach((b) => b.addEventListener("click", () => {
+      $("#calcExpr").value = b.dataset.calcTpl;
+      calcOp = b.dataset.calcOpSet || "evaluate";
+      $$("[data-calc-op]", $("#modalBody")).forEach((x) => x.classList.toggle("is-on", x.dataset.calcOp === calcOp));
+      runCalc();
+    }));
+    $("#calcExpr").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runCalc(); }
+    });
+    $("#calcExpr").focus();
+  }
+
+  async function runCalc() {
+    const out = $("#calcOut");
+    if (!out) return;
+    const expr = ($("#calcExpr") && $("#calcExpr").value || "").trim();
+    if (!expr) { out.innerHTML = '<p class="muted-line">先写点什么。</p>'; return; }
+    out.innerHTML = '<p class="muted-line">正在本地计算…</p>';
+    if (!window.ToolCheck) { out.innerHTML = '<p class="muted-line">本地引擎不可用。</p>'; return; }
+    let r;
+    try { r = await window.ToolCheck.calc(expr, calcOp); }
+    catch (e) { r = { ok: false, text: e.message || String(e) }; }
+    if (!$("#calcOut")) return;
+    const box = document.createElement("div");
+    box.className = "calc-result" + (r.ok ? "" : " is-bad");
+    const head = document.createElement("span");
+    head.className = "mono";
+    head.textContent = r.ok ? "RESULT / " + (CALC_OPS.find((x) => x[0] === calcOp) || ["", ""])[1] : "ERROR";
+    const val = document.createElement("b");
+    val.textContent = r.text;
+    const note = document.createElement("p");
+    note.textContent = r.note || "";
+    box.append(head, val, note);
+    $("#calcOut").replaceChildren(box);
   }
 
   /* ================= 模态 / 提示 ================= */

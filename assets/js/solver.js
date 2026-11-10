@@ -89,6 +89,12 @@ ${playbook(spec)}
 
 步骤要求：每个 steps 项只承担一个可核验论断；justification 必须给出定理、公式、推导或构造验证；dependsOn 填写本解答内的前置步骤 id，不得循环依赖。关键步骤不能写“显然”。checks 中只能把实际做过的检查标为 pass，未做必须标 not_performed。最终证明题的 value 写结论及证明完成说明，计算题写带单位的结果。不得输出 0～1 的置信分数。
 
+本地计算核验：本站会用浏览器内的符号/数值引擎独立重算你写下的等式。请在 toolChecks 里把关键恒等式写成可计算的形式，最多 6 条：
+- identity 用于恒等式：{"stepId":"s1","kind":"identity","lhs":"(x-2)^2-1","rhs":"x^2-4*x+3","vars":["x"]}
+- unit 用于物理量纲：{"stepId":"s2","kind":"unit","lhs":"2 m/s^2 * 3 s","rhs":"5 m/s"}
+- 只写你确有把握的等式；lhs/rhs 必须是纯 ASCII 数学表达式（^ 表示幂、* 不能省略、sqrt() 开方），不要写中文、不要写 f(x) 这类函数记号、不要写区间或文字。
+- 没有可计算核验的等式就写空数组 []。引擎会展开 lhs-rhs；不为 0 就是矛盾，会按失败关闭处理，不会放行。无法解析的条目会被标为 SKIP，不计入通过数。
+
 ${JSON_ONLY}
 
 输出结构：
@@ -99,6 +105,7 @@ ${JSON_ONLY}
   "steps":[{"id":"s1","claim":"论断或推导结果","justification":"完整依据和必要计算","dependsOn":[]}],
   "finalAnswers":[{"objectiveId":"obj_1","value":"结论、数值、公式或证明完成声明"}],
   "checks":[{"type":"如dimensions/limit/domain/counterexample/construction","target":"检查对象","status":"pass | fail | not_performed | not_applicable","detail":"实际检查过程"}],
+  "toolChecks":[{"stepId":"s1","kind":"identity","lhs":"","rhs":"","vars":["x"]}],
   "uncertainties":["仍未解决的问题；没有则空数组"]
 }`;
     const user = `<原始题目>\n${input.question}\n</原始题目>\n<审题契约>\n${JSON.stringify(spec)}\n</审题契约>${renderDiagramBlock(input.diagram)}${renderRagBlock(ragChunks)}`;
@@ -277,6 +284,7 @@ ${JSON_ONLY}
   /* ---------------- 证据量 ---------------- */
 
   function computeEvidence(spec, candidate, report, flags) {
+    const tool = flags.tool || { passes: 0, checks: 0 };
     const objectiveIds = new Set((spec.objectives || []).map((o) => o.id));
     const stepIds = new Set((candidate.steps || []).map((s) => s.id));
     const verifiedTargets = new Set((report.objectiveChecks || [])
@@ -300,7 +308,7 @@ ${JSON_ONLY}
     return {
       verifiedTargets, totalTargets: objectiveIds.size,
       verifiedSteps, totalSteps: stepIds.size,
-      independentToolPasses: 0, independentToolChecks: 0,
+      independentToolPasses: tool.passes, independentToolChecks: tool.checks,
       independentVerifier: !!flags.independentVerifier,
       independentAdjudicator: !!flags.independentAdjudicator,
       crossModelAgree: flags.crossModelAgree,
@@ -349,6 +357,14 @@ ${JSON_ONLY}
     L.push(`- 证据是否充足：${res.evidence.sufficient ? "是" : "否"}`);
     (res.evidence.insufficientReasons || []).forEach((r) => L.push(`  - ${r}`));
     L.push("");
+
+    if (res.tool && (res.tool.rows || []).length) {
+      L.push("## 本地计算核验", "");
+      L.push(`- 引擎：${res.tool.available ? "已运行（浏览器内）" : "不可用"} · 通过 ${res.tool.passes}/${res.tool.checks} · 数值佐证 ${res.tool.numeric} · 无法判定 ${res.tool.skipped}`);
+      res.tool.rows.forEach((r) => L.push(`  - [${r.status}] ${r.stepId}：${r.detail}`));
+      L.push("");
+      L.push("> 数值抽样一致只算佐证，不是符号证明；工具发现矛盾按失败关闭处理。", "");
+    }
 
     if ((res.warnings || []).length) {
       L.push("## 降级与警告", "");
@@ -512,6 +528,24 @@ ${JSON_ONLY}
     const redlineCount = parsed.reduce((n2, p) => n2 + p.redlines.length, 0);
     emit({ id: "redline", state: redlineCount ? "warn" : "done", note: redlineCount ? redlineCount + " 处命中" : "0 处命中" });
 
+    /* 3.5 本地计算核验：纯浏览器内符号/数值引擎，不调用任何模型 */
+    emit({ id: "tools", state: "run", note: "载入本地引擎" });
+    for (const p of parsed) {
+      try {
+        p.tool = window.ToolCheck
+          ? await window.ToolCheck.verify(p.candidate, spec)
+          : { available: false, rows: [], passes: 0, checks: 0, contradictions: [], skipped: 0, numeric: 0 };
+      } catch (err) {
+        p.tool = { available: false, rows: [], passes: 0, checks: 0, contradictions: [], skipped: 0, numeric: 0, error: String(err.message || err) };
+        warnings.push(`本地计算引擎不可用，工具证据留空：${err.message || err}`);
+      }
+    }
+    const toolPasses = parsed.reduce((n2, p) => n2 + (p.tool ? p.tool.passes : 0), 0);
+    const toolChecks = parsed.reduce((n2, p) => n2 + (p.tool ? p.tool.checks : 0), 0);
+    const toolContradictions = parsed.reduce((n2, p) => n2 + (p.tool ? p.tool.contradictions.length : 0), 0);
+    emit({ id: "tools", state: toolContradictions ? "warn" : (toolChecks ? "done" : "skip"),
+      note: toolChecks ? `${toolPasses}/${toolChecks} 通过${toolContradictions ? " · " + toolContradictions + " 处矛盾" : ""}` : "无可核验等式" });
+
     /* 4. 独立审核（红线命中的候选不送审，直接不进入 accepted） */
     const verifierSlot = slots.verifier && slots.verifier.enabled ? slots.verifier : solverSlot;
     const independentVerifier = slots.verifier && slots.verifier.enabled && slots.verifier.family !== solverSlot.family;
@@ -589,6 +623,9 @@ ${JSON_ONLY}
         return { ...p, blockers: ["未取得独立审核报告。"], softBlockers: [], evidence: null };
       }
       const blockers = acceptanceBlockers(spec, p.candidate, p.report, p.redlines, input);
+      (p.tool && p.tool.contradictions || []).forEach((x) => {
+        blockers.push(`本地计算核验发现矛盾 @${x.stepId}：${x.detail}`);
+      });
       return { ...p, blockers, softBlockers: softBlockers(spec, input), evidence: null };
     });
     const accepted = evaluated.filter((p) => p.blockers.length === 0);
@@ -641,13 +678,14 @@ ${JSON_ONLY}
         independentVerifier,
         independentAdjudicator: !!(adjudicatorSlot && crossModelAgree === true),
         crossModelAgree,
+        tool: selected.tool || { passes: 0, checks: 0 },
       });
       selected.evidence = evidence;
     } else {
       evidence = {
         verifiedTargets: 0, totalTargets: (spec.objectives || []).length,
         verifiedSteps: 0, totalSteps: 0,
-        independentToolPasses: 0, independentToolChecks: 0,
+        independentToolPasses: toolPasses, independentToolChecks: toolChecks,
         independentVerifier: !!independentVerifier,
         independentAdjudicator: !!(adjudicatorSlot && crossModelAgree === true),
         crossModelAgree,
@@ -695,6 +733,7 @@ ${JSON_ONLY}
     const result = {
       status, assurance, spec,
       question: input.question,
+      tool: selected ? selected.tool : (evaluated.length === 1 ? evaluated[0].tool : null),
       candidates: evaluated,
       selectedCandidate: selected ? selected.candidate : null,
       selectedIndex: selected ? selected.index : null,

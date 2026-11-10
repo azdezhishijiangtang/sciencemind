@@ -33,7 +33,7 @@
         <circle class="brand-accent" cx="12" cy="12" r="1.4" fill="currentColor"/>
       </svg>
       <span class="brand-word">Science<span>Mind</span></span>
-      <span class="brand-ver">v11.1</span>
+      <span class="brand-ver">v11.2</span>
     </a>
 
     <nav class="tabs" aria-label="主导航">
@@ -92,13 +92,14 @@
             <label for="question">题目</label>
             <span class="field-meta" id="qCount">0 字</span>
           </div>
-          <textarea id="question" spellcheck="false" placeholder="粘贴题目原文，支持 LaTeX：&#10;&#10;设 a, b, c &gt; 0，且 a+b+c=3，证明：…&#10;&#10;没有 Key？点下方「示例 · 三种结局」，直接跑一次本地判题。"></textarea>
+          <textarea id="question" spellcheck="false" placeholder="粘贴题目原文，支持 LaTeX：&#10;&#10;设 a, b, c &gt; 0，且 a+b+c=3，证明：…&#10;&#10;没有 Key？点下方「示例 · 四种结局」，直接跑一次本地判题。"></textarea>
           <div class="field-tools">
             <button class="tool" id="imageBtn" type="button">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12v9H2z" fill="none" stroke="currentColor"/><circle cx="5.6" cy="6.6" r="1.1" fill="currentColor"/><path d="M2.5 11l3.4-3 2.5 2.2 2.3-2.6 3 3.4" fill="none" stroke="currentColor"/></svg>
               图片题
             </button>
-            <button class="tool" id="demoBtn" type="button">示例 · 三种结局</button>
+            <button class="tool" id="demoBtn" type="button">示例 · 四种结局</button>
+            <button class="tool" data-open-calc type="button">本地计算</button>
             <button class="tool tool--quiet" id="clearBtn" type="button">清空</button>
             <span class="tool-spacer"></span>
             <button class="tool tool--quiet" id="pasteBtn" type="button">读剪贴板</button>
@@ -224,7 +225,7 @@
             </div>
             <div class="empty-foot">
               <span class="mono">NO KEY REQUIRED FOR DEMO</span>
-              <p>没有 API Key 也能点「示例 · 三种结局 → 开始判题」，跑一次完整的本地判定：一个通过、一个被图片门槛降级、一个被红线拦下。</p>
+              <p>没有 API Key 也能点「示例 · 四种结局 → 开始判题」，跑一次完整的本地判定：一个通过、一个被图片门槛降级、一个被红线拦下、一个被本地符号计算查出矛盾。</p>
             </div>
           </div>
 
@@ -243,7 +244,7 @@
           <div class="result" id="stageResult" hidden></div>
 
           <div class="stage-foot">
-            <span>ScienceMind v11.1 · 程序化判题</span>
+            <span>ScienceMind v11.2 · 程序化判题</span>
             <span>© 2026 azdezhishijiangtang · <a href="https://github.com/azdezhishijiangtang/sciencemind/blob/main/LICENSE" target="_blank" rel="noopener">保留所有权利</a></span>
             <span>无后端 · 无账号 · 无云同步</span>
           </div>
@@ -296,6 +297,7 @@
             </button>
             <button class="tool tool--quiet" id="askPasteBtn" type="button">读剪贴板</button>
             <button class="tool tool--quiet" id="askDemoBtn" type="button">载入演示</button>
+            <button class="tool tool--quiet" data-open-calc type="button">本地计算</button>
             <input type="file" id="askFileInput" accept="image/*" hidden>
           </div>
           <div class="ask-thumb" id="askThumb" hidden>
@@ -490,7 +492,7 @@
   <section class="view" id="view-method" aria-label="方法与边界" hidden>
     <div class="page">
       <header class="page-head">
-        <div class="eyebrow"><span>METHOD / v11.1</span><span class="eyebrow-rule"></span></div>
+        <div class="eyebrow"><span>METHOD / v11.2</span><span class="eyebrow-rule"></span></div>
         <h1>它怎么判，<br>以及它不做什么。</h1>
         <p class="page-sub">ScienceMind 不承诺绝对正确。它承诺的是：每个结论都能追到证据，每个失败都能看到原因，模型自报的 pass 不算数。</p>
       </header>
@@ -578,7 +580,7 @@
             <div><h3>无人工金标集</h3><p>没有人工标注的题目集与对照实验，因此本产品不提供任何「正确率提升 X%」的数字。</p></div>
             <div><h3>密钥的极限</h3><p>纯静态 BYOK 无法抵御解锁期间的 XSS。密钥默认只在内存，降低的是持久化暴露面，不是硬件级隔离。</p></div>
           </div>
-          <p class="method-note">本页是 v11.0 方案的浏览器实现，v11.1 在其上补了学习闭环（档案仪表盘、程序化重测、答疑卡点）。判题链路、红线、证据量、图片门槛与状态语义与文档一致；OCR、资料检索与三档调用为前端近似实现，不冒充生产包的实测结论。</p>
+          <p class="method-note">本页是 v11.0 方案的浏览器实现：v11.1 补了学习闭环（档案仪表盘、程序化重测、答疑卡点），v11.2 补了本地计算核验与计算台。判题链路、红线、证据量、图片门槛与状态语义与文档一致；OCR、资料检索与三档调用为前端近似实现，不冒充生产包的实测结论。</p>
         </div>
       </section>
 
@@ -603,10 +605,24 @@
           <p>判定不是终点。每条没过验收的记录都会进入档案，由程序做三件事：归类卡点、排重测、留答疑的脚印。这里没有「标记已解决」，闭合只有一种方式——重判通过。</p>
           <div class="tier-grid">
             <article><span class="mono">DASHBOARD</span><h3>弱点不是感觉，是计数</h3><p>最近未通过的记录按降级原因聚类：几次卡在图片未核对、几次证据不足。统计在本地完成，不经过任何模型。</p></article>
-            <article><span class="mono">RETEST</span><h3>重测由程序排期</h3><p>没过的题在 3 天 天后置顶提醒。重判时把上次的降级原因和这次并排展示；通过后原记录自动闭合，失败则继续留在队列。</p></article>
+            <article><span class="mono">RETEST</span><h3>重测由程序排期</h3><p>没过的题在 3 天后置顶提醒。重判时把上次的降级原因和这次并排展示；通过后原记录自动闭合，失败则继续留在队列。</p></article>
             <article><span class="mono">TUTOR</span><h3>卡点也留档</h3><p>答疑结束时，「你在哪一步停下」和回答定位到的那一行会写入档案，单独打 tutor 标签，永远不碰 verified 语义。</p></article>
           </div>
           <p class="method-note">档案页不出现「正确率 X%」，也不提供账号、云同步或分享链接。前者会背叛「证据量不是置信度」，后者会把「无后端」这块骨头抽掉。</p>
+        </div>
+      </section>
+
+      <section class="method-sec" id="m-tools">
+        <div class="method-no">09</div>
+        <div class="method-body">
+          <h2>让计算引擎也进笼子</h2>
+          <p>模型说「配方之后得到这个式子」，不算证据。判题链路里有一道独立的本地计算核验：用浏览器内的符号引擎展开左右两边之差，用数值引擎做抽样与量纲检查。这一步零模型参与、零网络请求。</p>
+          <div class="tier-grid">
+            <article><span class="mono">PASS</span><h3>差值展开为 0</h3><p>符号引擎把 lhs − rhs 展开，结果为 0 才算通过。这是严格证明，不是「看起来对」。</p></article>
+            <article><span class="mono">NUMERIC</span><h3>抽样一致只是佐证</h3><p>符号引擎化不开时（例如三角恒等式），若多个数值点都一致，只标 NUMERIC，不冒充证明，也不单独撑起 verified。</p></article>
+            <article><span class="mono">SKIP / FAIL</span><h3>读不懂就不判，矛盾就关门</h3><p>含中文、函数记号或单位解析不了，一律 SKIP 且不计入通过数；一旦展开出差值或抽样反例，按失败关闭，阻止 verified。</p></article>
+          </div>
+          <p class="method-note">「本地计算」入口还提供化简、求导、数值求根、单位换算与量纲比较，以及常用物理公式。它是给你核对的工具，结果不参与判定、不写入档案，也不生成分享链接。引擎文件随本站一起加载，离线可用。</p>
         </div>
       </section>
 
@@ -695,6 +711,7 @@
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <script src="assets/js/data.js"></script>
 <script src="assets/js/store.js"></script>
+<script src="assets/js/toolcheck.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/solver.js"></script>
 <script src="assets/js/ui.js"></script>
